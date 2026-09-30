@@ -1,0 +1,24 @@
+{
+  "name": "marginalia",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Poller that watches open GitLab MRs, triggers Claude Code headless review, and posts the result as an MR comment.",
+  "main": "poll.mjs",
+  "scripts": {
+    "start": "node poll.mjs",
+    "setup": "npm install && npm run studio:install && npm run studio:build && npm run init",
+    "init": "node scripts/init.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "test": "node --test test/*.test.mjs",
+    "studio:install": "npm --prefix studio install",
+    "studio:build": "npm --prefix studio run build",
+    "studio:dev": "npm --prefix studio run dev"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5"
+  }
+}
