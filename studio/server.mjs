@@ -295,13 +295,10 @@ export function startStudio() {
   } catch {
     /* dir may not exist yet; the poller creates it, SSE just stays quiet */
   }
+  // Watch the directory, not the files: status.json and settings.json are
+  // written via tmp + rename, which leaves a file-level watcher on the old inode.
   try {
-    watch(dirname(STATUS_FILE), (_e, name) => name === 'settings.json' && broadcast());
-  } catch {
-    /* same */
-  }
-  try {
-    watch(STATUS_FILE, broadcast);
+    watch(dirname(STATUS_FILE), (_e, name) => (name === 'settings.json' || name === 'status.json') && broadcast());
   } catch {
     /* same */
   }
