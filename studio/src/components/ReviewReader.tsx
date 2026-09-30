@@ -1,4 +1,4 @@
-import { Children, createElement, isValidElement, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Children, createElement, isValidElement, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -7,6 +7,7 @@ import { SemanticText } from 'semfont';
 import { toast } from 'sonner';
 import { useScrollLock } from '../lib/useScrollLock';
 import { usePersistentState } from '../lib/layout';
+import { useModalFocus } from '../lib/useModalFocus';
 import { createContext } from 'react';
 import { Check, ChevronRight, Copy, ExternalLink, Loader2, PanelRight, Pencil, Send, Sparkles, Undo2 } from 'lucide-react';
 import { postComment, type PostedInfo, type ReviewItem } from '../lib/api';
@@ -111,22 +112,25 @@ interface PostContextValue {
 const PostContext = createContext<PostContextValue>({ allowPosting: false, slug: null, iid: null, posted: {}, reload: () => {} });
 
 // Nothing is sent until "Post comment" is clicked here, with the final text.
-function ConfirmPost({ iid, text, onCancel, onConfirm }: { iid: string | number; text: string; onCancel: () => void; onConfirm: () => Promise<void> }) {
+function ConfirmPost({ iid, text, onCancel, onConfirm, fallbackRef }: { iid: string | number; text: string; onCancel: () => void; onConfirm: () => Promise<void>; fallbackRef: RefObject<HTMLElement | null> }) {
   const [busy, setBusy] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
   useScrollLock(true);
+  // Focus moves to Cancel (the safe choice), stays inside, and returns to the opener on close.
+  useModalFocus(true, dialogRef, { initial: '[data-autofocus]', fallback: fallbackRef });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !busy && onCancel();
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [busy, onCancel]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={busy ? undefined : onCancel} role="dialog" aria-modal="true" aria-label="Confirm posting">
-      <div className="w-full max-w-lg rounded-xl border border-zinc-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-base font-semibold">Post this comment on !{iid}?</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={busy ? undefined : onCancel}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="confirm-post-title" aria-describedby="confirm-post-text" className="w-full max-w-lg rounded-xl border border-zinc-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900" onClick={(e) => e.stopPropagation()}>
+        <h2 id="confirm-post-title" className="text-base font-semibold">Post this comment on !{iid}?</h2>
         <p className="mt-1 text-sm text-fg-muted">It will be posted on GitLab under your account and visible to the MR author.</p>
-        <pre className="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm dark:border-zinc-800 dark:bg-zinc-950">{text}</pre>
+        <pre id="confirm-post-text" tabIndex={0} aria-label="Comment text" className="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm dark:border-zinc-800 dark:bg-zinc-950">{text}</pre>
         <div className="mt-4 flex justify-end gap-2">
-          <button disabled={busy} onClick={onCancel} className="rounded-lg border border-zinc-200 px-3 py-1.5 text-sm hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Cancel</button>
+          <button data-autofocus disabled={busy} onClick={onCancel} className="rounded-lg border border-zinc-200 px-3 py-1.5 text-sm hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Cancel</button>
           <button
             disabled={busy}
             onClick={async () => {
@@ -161,6 +165,8 @@ function Quote({ children }: { children?: ReactNode }) {
   const commentId = key.split(':').pop() ?? '';
   const postedInfo = post.slug ? post.posted[`${post.slug}:${commentId}`] : undefined;
   const [confirming, setConfirming] = useState(false);
+  // Focus lands here if the button that opened the dialog is gone (a posted comment replaces it).
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const startEdit = () => {
     const text = ref.current?.innerText.trim() ?? original;
@@ -180,7 +186,7 @@ function Quote({ children }: { children?: ReactNode }) {
   };
 
   return (
-    <div className="not-prose my-4 rounded-lg border border-blue-500/30 bg-blue-500/5 p-4">
+    <div ref={rootRef} tabIndex={-1} className="not-prose my-4 rounded-lg border border-blue-500/30 bg-blue-500/5 p-4 focus:outline-none">
       <div className="mb-2 flex items-center justify-between gap-2 text-xs font-medium uppercase tracking-wide text-blue-700 dark:text-blue-300">
         <span>
           Comment to post{edited !== null && !editing ? ' · edited' : ''}
@@ -220,7 +226,7 @@ function Quote({ children }: { children?: ReactNode }) {
           value={edited ?? ''}
           onChange={(e) => update(e.target.value)}
           rows={Math.min(14, Math.max(4, (edited ?? '').split('\n').length + 2))}
-          className="w-full resize-y rounded-md border border-zinc-300 bg-white p-3 text-sm leading-relaxed outline-none focus:border-blue-500 dark:border-zinc-700 dark:bg-zinc-900"
+          className="w-full resize-y rounded-md border border-zinc-300 bg-white p-3 text-sm leading-relaxed outline-none focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/50 dark:border-zinc-700 dark:bg-zinc-900"
         />
       ) : edited !== null ? (
         <div className="whitespace-pre-wrap text-sm leading-relaxed">{edited}</div>
@@ -231,6 +237,7 @@ function Quote({ children }: { children?: ReactNode }) {
         <ConfirmPost
           iid={post.iid}
           text={current}
+          fallbackRef={rootRef}
           onCancel={() => setConfirming(false)}
           onConfirm={async () => {
             const posted = await postComment(post.slug!, commentId, current);
@@ -370,10 +377,13 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
                 onOpenChange={(o) => setOverrides((prev) => ({ ...prev, [s.id]: o }))}
                 className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
               >
-                <Collapsible.Trigger className="group flex w-full items-center gap-2 px-4 py-3 text-left font-medium">
-                  <ChevronRight className={cn('size-4 shrink-0 text-fg-subtle transition-transform', isOpen(s) && 'rotate-90')} />
-                  {s.title}
-                </Collapsible.Trigger>
+                {/* A real heading around the trigger, so screen-reader users can jump between sections. */}
+                <h2 className="text-base">
+                  <Collapsible.Trigger className="group flex w-full items-center gap-2 rounded-xl px-4 py-3 text-left font-medium">
+                    <ChevronRight className={cn('size-4 shrink-0 text-fg-subtle transition-transform', isOpen(s) && 'rotate-90')} aria-hidden />
+                    {s.title}
+                  </Collapsible.Trigger>
+                </h2>
                 <Collapsible.Content className="border-t border-zinc-100 px-4 py-4 dark:border-zinc-800">
                   <Md semantic={semantic}>{s.body}</Md>
                 </Collapsible.Content>

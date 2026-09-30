@@ -52,9 +52,10 @@ export function Sidebar({ items, activeSlug, botBySlug, isUnread, open, onSelect
       >
         <div className="flex h-full w-72 flex-col">
           <div className="p-3">
-            <label className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <label className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/50 dark:border-zinc-800 dark:bg-zinc-900">
               <Search className="size-4 shrink-0 text-fg-subtle" />
               <input
+                aria-label="Filter reviews"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Filter reviews…"
@@ -84,6 +85,7 @@ export function Sidebar({ items, activeSlug, botBySlug, isUnread, open, onSelect
                         <li key={item.slug}>
                           <a
                             href={`#/${item.slug}`}
+                            aria-current={active ? 'page' : undefined}
                             tabIndex={open ? 0 : -1}
                             onClick={(e) => {
                               e.preventDefault();
@@ -94,13 +96,13 @@ export function Sidebar({ items, activeSlug, botBySlug, isUnread, open, onSelect
                           >
                             <span className="mt-0.5"><TabIcon item={item} bot={botBySlug.get(item.slug)} /></span>
                             <span className="min-w-0 flex-1">
-                              <span className={cn('line-clamp-2 leading-snug', isUnread(item) && 'font-medium')}>{item.title}</span>
+                              <span className={cn('line-clamp-2 leading-snug', isUnread(item) && 'font-medium')}>{item.title}{isUnread(item) && <span className="sr-only"> (unread)</span>}</span>
                               <span className="mt-0.5 flex items-center gap-1.5 text-xs text-fg-muted">
                                 {item.iid && <span className="font-mono">!{item.iid}</span>}
                                 <span>{timeAgo(item.reviewedAt)}</span>
                               </span>
                             </span>
-                            {isUnread(item) && <span className="mt-1.5 size-2 shrink-0 rounded-full bg-blue-500" aria-label="Unread" />}
+                            {isUnread(item) && <span className="mt-1.5 size-2 shrink-0 rounded-full bg-blue-500" aria-hidden />}
                           </a>
                         </li>
                       );

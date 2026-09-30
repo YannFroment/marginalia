@@ -35,7 +35,7 @@ export function ReviewCard({ item, unread, size }: { item: ReviewItem; unread: b
         small ? 'gap-1.5 p-3' : 'gap-3 p-4',
       )}
     >
-      {unread && <span className={cn('absolute size-2 rounded-full bg-blue-500', small ? 'right-2.5 top-2.5' : 'right-3 top-3')} title="Unread" />}
+      {unread && <span className={cn('absolute size-2 rounded-full bg-blue-500', small ? 'right-2.5 top-2.5' : 'right-3 top-3')} aria-hidden />}
 
       <motion.div layout="position" transition={LAYOUT} className="flex items-center gap-2 text-xs text-fg-muted">
         {item.iid && <span className="font-mono">!{item.iid}</span>}
@@ -43,7 +43,7 @@ export function ReviewCard({ item, unread, size }: { item: ReviewItem; unread: b
         <span>{timeAgo(item.reviewedAt)}</span>
       </motion.div>
 
-      <motion.h3 layout="position" transition={LAYOUT} className={cn('font-medium leading-snug', small ? 'line-clamp-2 text-xs' : large ? 'text-base' : 'line-clamp-2 text-sm')}>{item.title}</motion.h3>
+      <motion.h2 layout="position" transition={LAYOUT} className={cn('font-medium leading-snug', small ? 'line-clamp-2 text-xs' : large ? 'text-base' : 'line-clamp-2 text-sm')}>{item.title}{unread && <span className="sr-only"> (unread)</span>}</motion.h2>
 
       <AnimatePresence initial={false} mode="popLayout">
         {large && (
