@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { MotionConfig } from 'motion/react';
 import { Inbox, LayoutGrid, Grid3x3, Rows3 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
@@ -10,7 +10,9 @@ import { TabStrip, type BotState } from './components/TabStrip';
 import { Sidebar } from './components/Sidebar';
 import { StatStrip, type Filter } from './components/StatStrip';
 import { ReviewCard, type CardSize } from './components/ReviewCard';
-import { ReviewReader } from './components/ReviewReader';
+// Not needed on Home, and the heaviest part of the bundle (markdown, highlighting, semfont).
+const loadReader = () => import('./components/ReviewReader');
+const ReviewReader = lazy(() => loadReader().then((m) => ({ default: m.ReviewReader })));
 import { CommandPalette } from './components/CommandPalette';
 
 const EMPTY_POSTED = {};
@@ -72,6 +74,12 @@ export function App() {
     if (error) toast.error('Studio API unreachable', { id: 'api-error', description: error, duration: Infinity });
     else toast.dismiss('api-error');
   }, [error]);
+
+  // Fetch the reader in the background once Home is up, so the first review opens instantly.
+  useEffect(() => {
+    const t = setTimeout(() => void loadReader(), 1200);
+    return () => clearTimeout(t);
+  }, []);
 
   // Home is the list (card grid), so the sidebar only exists while reading a
   // review. The stored preference is kept and comes back on the next review.
@@ -202,7 +210,9 @@ export function App() {
         <Sidebar items={items} activeSlug={slug} botBySlug={botBySlug} isUnread={isUnread} open={sidebarOpen} onSelect={go} onClose={() => setSidebarOpen(false)} />
         <main className="min-w-0 flex-1">
       {slug ? (
+        <Suspense fallback={<p className="px-6 py-6 text-fg-muted">Loading…</p>}>
         <ReviewReader item={current} markdown={markdown} projectUrl={data?.projectUrl ?? null} allowPosting={data?.allowPosting ?? false} posted={data?.posted ?? EMPTY_POSTED} reload={reload} />
+        </Suspense>
       ) : (
         <div className="mx-auto max-w-7xl px-6 py-8">
           <h1 className="text-3xl font-semibold tracking-tight">Review queue</h1>

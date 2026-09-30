@@ -2,6 +2,14 @@ import { Children, createElement, isValidElement, useContext, useEffect, useMemo
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
+import bash from 'highlight.js/lib/languages/bash';
+import css from 'highlight.js/lib/languages/css';
+import diff from 'highlight.js/lib/languages/diff';
+import javascript from 'highlight.js/lib/languages/javascript';
+import json from 'highlight.js/lib/languages/json';
+import typescript from 'highlight.js/lib/languages/typescript';
+import xml from 'highlight.js/lib/languages/xml';
+import yaml from 'highlight.js/lib/languages/yaml';
 import * as Collapsible from '@radix-ui/react-collapsible';
 import { SemanticText } from 'semfont';
 import { toast } from 'sonner';
@@ -251,6 +259,14 @@ function Quote({ children }: { children?: ReactNode }) {
   );
 }
 
+// A handful of languages instead of highlight.js's whole "common" set: reviews quote
+// TypeScript, config and shell, and rarely anything else (unknown fences stay plain).
+const HIGHLIGHT = {
+  detect: false,
+  languages: { bash, css, diff, javascript, json, typescript, xml, yaml },
+  aliases: { bash: ['sh', 'shell', 'zsh'], javascript: ['js', 'jsx', 'mjs'], typescript: ['ts', 'tsx'], xml: ['html', 'svg'], yaml: ['yml'] },
+};
+
 // Vocabulary of code reviews, merged over semfont's defaults.
 const LEXICON = {
   valence: { blocker: -0.8, blocks: -0.6, regression: -0.7, leak: -0.6, unsafe: -0.7, vulnerability: -0.8, broken: -0.7, missing: -0.4, downgrade: -0.5, fixed: 0.5, resolved: 0.5 },
@@ -298,7 +314,7 @@ function Md({ children, semantic }: { children: string; semantic: boolean }) {
   const components = useMemo(() => makeComponents(semantic, ctx), [semantic, ctx]);
   return (
     <div className={cn('prose prose-zinc max-w-none [overflow-wrap:anywhere] prose-headings:tracking-tight prose-code:before:content-none prose-code:after:content-none prose-code:rounded prose-code:bg-zinc-100 prose-code:px-1 prose-code:py-0.5 prose-code:text-[0.85em] prose-code:font-normal dark:prose-invert dark:prose-code:bg-zinc-800 [&_pre_code]:bg-transparent [&_pre_code]:p-0', semantic && 'semfont')}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeHighlight, { detect: false }]]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeHighlight, HIGHLIGHT]]} components={components}>
         {children}
       </ReactMarkdown>
     </div>

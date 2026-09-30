@@ -1,6 +1,6 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
-@import '@fontsource-variable/recursive/full.css';
+@import '@fontsource-variable/recursive/slnt.css';
 
 @theme {
   --font-sans: ui-sans-serif, -apple-system, 'Inter', 'Segoe UI', system-ui, sans-serif;
@@ -69,10 +69,9 @@ html {
   .hljs-deletion { color: #f87171; }
 }
 
-/* semfont needs a font with wght / slnt (and optionally MONO / CASL) axes. */
+/* semfont's editorial theme drives two axes, wght and slnt; only those are loaded. */
 .semfont {
   font-family: 'Recursive Variable', ui-sans-serif, system-ui, sans-serif;
-  font-variation-settings: 'MONO' 0, 'CASL' 0;
 }
 .semfont code,
 .semfont pre {
