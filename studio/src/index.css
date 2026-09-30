@@ -53,6 +53,11 @@ html {
   scroll-behavior: smooth;
   scroll-padding-top: 8rem;
 }
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
 
 /* highlight.js, minimal palette that works in both themes */
 .hljs-comment, .hljs-quote { color: #71717a; }

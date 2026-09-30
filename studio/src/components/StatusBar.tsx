@@ -12,12 +12,12 @@ function BotState({ status }: { status: BotStatus | null }) {
     return (
       <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
         <Eye className="size-4" />Reviewing !{status.current.iid}
-        <Loader2 className="size-3.5 animate-spin" />
+        <Loader2 className="size-3.5 animate-spin motion-reduce:animate-pulse" />
       </span>
     );
   }
   if (status.phase === 'polling') {
-    return <span className="flex items-center gap-1.5"><RefreshCw className="size-4 animate-spin" />Polling…</span>;
+    return <span className="flex items-center gap-1.5"><RefreshCw className="size-4 animate-spin motion-reduce:animate-pulse" />Polling…</span>;
   }
   if (status.phase === 'error') {
     return <span className="flex items-center gap-1.5 text-red-600 dark:text-red-400"><TriangleAlert className="size-4" />Last poll failed</span>;

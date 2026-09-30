@@ -152,7 +152,7 @@ function ConfirmPost({ iid, text, onCancel, onConfirm, fallbackRef }: { iid: str
             }}
             className="touch-target inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-60"
           >
-            {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}Post comment
+            {busy ? <Loader2 className="size-4 animate-spin motion-reduce:animate-pulse" /> : <Send className="size-4" />}Post comment
           </button>
         </div>
       </div>
@@ -333,7 +333,8 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
   const setAll = (open: boolean) => setOverrides(Object.fromEntries(sections.map((s) => [s.id, open])));
   const jump = (id: string) => {
     setOverrides((o) => ({ ...o, [id]: true }));
-    requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }));
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: calm ? 'auto' : 'smooth' }));
   };
 
   return (
@@ -396,7 +397,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
                 {/* A real heading around the trigger, so screen-reader users can jump between sections. */}
                 <h2 className="text-base">
                   <Collapsible.Trigger className="group flex w-full items-center gap-2 rounded-xl px-4 py-3 text-left font-medium">
-                    <ChevronRight className={cn('size-4 shrink-0 text-fg-subtle transition-transform', isOpen(s) && 'rotate-90')} aria-hidden />
+                    <ChevronRight className={cn('size-4 shrink-0 text-fg-subtle transition-transform motion-reduce:transition-none', isOpen(s) && 'rotate-90')} aria-hidden />
                     {s.title}
                   </Collapsible.Trigger>
                 </h2>
@@ -411,7 +412,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
           <aside
             aria-label="Review details"
             aria-hidden={!panelOpen}
-            className={cn('sticky top-[calc(var(--chrome-h)+1rem)] hidden h-[calc(100vh-var(--chrome-h)-2rem)] shrink-0 self-start overflow-hidden transition-[width,opacity] duration-300 ease-out lg:block', panelOpen ? 'w-64 opacity-100' : 'w-0 opacity-0')}
+            className={cn('sticky top-[calc(var(--chrome-h)+1rem)] hidden h-[calc(100vh-var(--chrome-h)-2rem)] shrink-0 self-start overflow-hidden transition-[width,opacity] duration-300 ease-out motion-reduce:transition-none lg:block', panelOpen ? 'w-64 opacity-100' : 'w-0 opacity-0')}
           >
             <div className="flex h-full w-64 flex-col gap-5 overflow-y-auto pr-1 text-sm">
               <section>

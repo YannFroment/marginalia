@@ -13,7 +13,7 @@ export const VERDICT_ICON = {
 // What the bot is doing with this review, shown before the verdict so live
 // work is visible at a glance: running, waiting, or broken.
 export function TabIcon({ item, bot }: { item: ReviewItem; bot: BotState }) {
-  if (bot === 'reviewing') return <Loader2 className="size-4 shrink-0 animate-spin text-blue-500" role="img" aria-label="Review in progress" />;
+  if (bot === 'reviewing') return <Loader2 className="size-4 shrink-0 animate-spin motion-reduce:animate-pulse text-blue-500" role="img" aria-label="Review in progress" />;
   if (bot === 'failed') return <AlertTriangle className="size-4 shrink-0 text-orange-500" role="img" aria-label="Review failed" />;
   if (bot === 'pending') return <Clock className="size-4 shrink-0 text-fg-subtle" role="img" aria-label="Waiting for review" />;
   const { Icon, cls } = VERDICT_ICON[item.verdict ?? 'OTHER'];

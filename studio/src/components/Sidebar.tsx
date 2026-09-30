@@ -45,7 +45,7 @@ export function Sidebar({ items, activeSlug, botBySlug, isUnread, open, onSelect
         aria-label="All reviews"
         aria-hidden={!open}
         className={cn(
-          'z-30 shrink-0 overflow-hidden border-zinc-200 bg-zinc-50 transition-[width,border-color] duration-300 ease-out dark:border-zinc-800 dark:bg-zinc-950',
+          'z-30 shrink-0 overflow-hidden border-zinc-200 bg-zinc-50 transition-[width,border-color] duration-300 ease-out motion-reduce:transition-none dark:border-zinc-800 dark:bg-zinc-950',
           'fixed bottom-0 left-0 top-[var(--chrome-h)] lg:sticky lg:top-[var(--chrome-h)] lg:h-[calc(100vh-var(--chrome-h))] lg:self-start',
           open ? 'w-72 border-r' : 'w-0 border-r-0',
         )}
@@ -73,7 +73,7 @@ export function Sidebar({ items, activeSlug, botBySlug, isUnread, open, onSelect
                   tabIndex={open ? 0 : -1}
                   className="flex w-full items-center gap-1 rounded px-2 py-1 text-xs font-medium uppercase tracking-wide text-fg-muted hover:text-zinc-900 dark:hover:text-zinc-100"
                 >
-                  <ChevronRight className={cn('size-3.5 transition-transform', !collapsed[g.id] && 'rotate-90')} />
+                  <ChevronRight className={cn('size-3.5 transition-transform motion-reduce:transition-none', !collapsed[g.id] && 'rotate-90')} />
                   {g.label}
                   <span className="ml-auto font-normal normal-case tracking-normal">{g.items.length}</span>
                 </button>
