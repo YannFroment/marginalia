@@ -78,7 +78,7 @@ export function ReviewCard({ item, unread, size }: { item: ReviewItem; unread: b
         {!small && (
           <motion.div key="footer" layout="position" {...reveal} className="flex items-center justify-between text-xs text-fg-muted">
             <span className="flex items-center gap-1 truncate">{item.author && <><User className="size-3" />{item.author}</>}</span>
-            <span className={cn('flex items-center gap-0.5 font-medium text-zinc-700 transition-opacity dark:text-zinc-300', large ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}>Open<ArrowUpRight className="size-3.5" /></span>
+            <span className={cn('flex items-center gap-0.5 font-medium text-zinc-700 transition-opacity dark:text-zinc-300', large ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100')}>Open<ArrowUpRight className="size-3.5" /></span>
           </motion.div>
         )}
       </AnimatePresence>
