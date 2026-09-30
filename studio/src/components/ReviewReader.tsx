@@ -123,7 +123,7 @@ function ConfirmPost({ iid, text, onCancel, onConfirm }: { iid: string | number;
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={busy ? undefined : onCancel} role="dialog" aria-modal="true" aria-label="Confirm posting">
       <div className="w-full max-w-lg rounded-xl border border-zinc-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-base font-semibold">Post this comment on !{iid}?</h2>
-        <p className="mt-1 text-sm text-zinc-500">It will be posted on GitLab under your account and visible to the MR author.</p>
+        <p className="mt-1 text-sm text-fg-muted">It will be posted on GitLab under your account and visible to the MR author.</p>
         <pre className="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm dark:border-zinc-800 dark:bg-zinc-950">{text}</pre>
         <div className="mt-4 flex justify-end gap-2">
           <button disabled={busy} onClick={onCancel} className="rounded-lg border border-zinc-200 px-3 py-1.5 text-sm hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Cancel</button>
@@ -319,7 +319,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
     <div className="px-6 py-6">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="mb-1 flex items-center gap-2 text-sm text-zinc-500">
+          <div className="mb-1 flex items-center gap-2 text-sm text-fg-muted">
             {item?.iid && <span className="font-mono">!{item.iid}</span>}
             {item?.author && <span>· {item.author}</span>}
             {item && <span>· {timeAgo(item.reviewedAt)}</span>}
@@ -349,7 +349,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
             aria-pressed={panelOpen}
             aria-label="Toggle side panel"
             title="Toggle side panel"
-            className={cn('hidden rounded-lg border p-1.5 lg:block', panelOpen ? 'border-zinc-300 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800' : 'border-zinc-200 bg-white text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900')}
+            className={cn('hidden rounded-lg border p-1.5 lg:block', panelOpen ? 'border-zinc-300 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800' : 'border-zinc-200 bg-white text-fg-muted dark:border-zinc-800 dark:bg-zinc-900')}
           >
             <PanelRight className="size-4" />
           </button>
@@ -357,7 +357,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
       </div>
 
       {markdown === null ? (
-        <p className="text-zinc-500">Loading…</p>
+        <p className="text-fg-muted">Loading…</p>
       ) : (
         <div className="flex gap-8">
           <article className="mx-auto w-full min-w-0 max-w-[80ch] space-y-3">
@@ -371,7 +371,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
                 className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
               >
                 <Collapsible.Trigger className="group flex w-full items-center gap-2 px-4 py-3 text-left font-medium">
-                  <ChevronRight className={cn('size-4 shrink-0 text-zinc-400 transition-transform', isOpen(s) && 'rotate-90')} />
+                  <ChevronRight className={cn('size-4 shrink-0 text-fg-subtle transition-transform', isOpen(s) && 'rotate-90')} />
                   {s.title}
                 </Collapsible.Trigger>
                 <Collapsible.Content className="border-t border-zinc-100 px-4 py-4 dark:border-zinc-800">
@@ -389,7 +389,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
           >
             <div className="flex h-full w-64 flex-col gap-5 overflow-y-auto pr-1 text-sm">
               <section>
-                <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">Details</h2>
+                <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-fg-muted">Details</h2>
                 <dl className="space-y-1.5">
                   {item?.iid && <Row label="Merge request">{item.webUrl ? <a className="text-blue-600 hover:underline dark:text-blue-400" href={item.webUrl} target="_blank" rel="noreferrer">!{item.iid}</a> : `!${item.iid}`}</Row>}
                   {item?.author && <Row label="Author">{item.author}</Row>}
@@ -399,7 +399,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
                 </dl>
               </section>
               <section className="min-h-0">
-                <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-wide text-zinc-500">
+                <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-wide text-fg-muted">
                   <h2 className="font-medium">Contents</h2>
                   <button className="normal-case hover:text-zinc-900 dark:hover:text-zinc-100" tabIndex={panelOpen ? 0 : -1} onClick={() => setAll(!allOpen)}>{allOpen ? 'Collapse all' : 'Expand all'}</button>
                 </div>
@@ -434,7 +434,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex justify-between gap-3">
-      <dt className="shrink-0 text-zinc-500">{label}</dt>
+      <dt className="shrink-0 text-fg-muted">{label}</dt>
       <dd className="min-w-0 text-right">{children}</dd>
     </div>
   );

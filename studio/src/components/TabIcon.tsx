@@ -7,7 +7,7 @@ export type BotState = 'pending' | 'reviewing' | 'failed' | 'skipped' | 'up_to_d
 export const VERDICT_ICON = {
   APPROVE: { Icon: CheckCircle2, cls: 'text-emerald-600 dark:text-emerald-400', accent: 'border-t-emerald-500' },
   REQUEST_CHANGES: { Icon: AlertOctagon, cls: 'text-red-600 dark:text-red-400', accent: 'border-t-red-500' },
-  OTHER: { Icon: HelpCircle, cls: 'text-zinc-500', accent: 'border-t-zinc-400' },
+  OTHER: { Icon: HelpCircle, cls: 'text-fg-muted', accent: 'border-t-zinc-400' },
 } as const;
 
 // What the bot is doing with this review, shown before the verdict so live
@@ -15,7 +15,7 @@ export const VERDICT_ICON = {
 export function TabIcon({ item, bot }: { item: ReviewItem; bot: BotState }) {
   if (bot === 'reviewing') return <Loader2 className="size-4 shrink-0 animate-spin text-blue-500" aria-label="Review in progress" />;
   if (bot === 'failed') return <AlertTriangle className="size-4 shrink-0 text-orange-500" aria-label="Review failed" />;
-  if (bot === 'pending') return <Clock className="size-4 shrink-0 text-zinc-400" aria-label="Waiting for review" />;
+  if (bot === 'pending') return <Clock className="size-4 shrink-0 text-fg-subtle" aria-label="Waiting for review" />;
   const { Icon, cls } = VERDICT_ICON[item.verdict ?? 'OTHER'];
   return <Icon className={cn('size-4 shrink-0', cls)} aria-hidden />;
 }

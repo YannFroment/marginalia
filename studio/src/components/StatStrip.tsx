@@ -37,8 +37,8 @@ export function StatStrip({ counts, active, onChange, keys }: {
           >
             <Icon className={cn('size-5 shrink-0', num)} aria-hidden />
             <span className="min-w-0">
-              <span className={cn('block text-2xl font-semibold leading-none tabular-nums', empty ? 'text-zinc-400' : num)}>{counts[k]}</span>
-              <span className="mt-1 block truncate text-xs text-zinc-500">{label}</span>
+              <span className={cn('block text-2xl font-semibold leading-none tabular-nums', empty ? 'text-fg-subtle' : num)}>{counts[k]}</span>
+              <span className="mt-1 block truncate text-xs text-fg-muted">{label}</span>
             </span>
           </button>
         );

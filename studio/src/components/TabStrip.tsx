@@ -31,7 +31,7 @@ export function TabStrip({ tabs, activeSlug, botBySlug, isUnread, isPosted, home
         aria-pressed={sidebarOpen}
         aria-label="Toggle sidebar"
         title={sidebarAvailable ? 'Toggle sidebar (⌘B)' : 'Home already lists every review'}
-        className={cn('flex w-11 shrink-0 items-center justify-center border-r border-zinc-200 dark:border-zinc-800', !sidebarAvailable ? 'text-zinc-300 dark:text-zinc-700' : sidebarOpen ? 'bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100' : 'text-zinc-500 hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60')}
+        className={cn('flex w-11 shrink-0 items-center justify-center border-r border-zinc-200 dark:border-zinc-800', !sidebarAvailable ? 'text-zinc-300 dark:text-zinc-700' : sidebarOpen ? 'bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100' : 'text-fg-muted hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60')}
       >
         <PanelLeft className="size-4" />
       </button>
@@ -84,7 +84,7 @@ export function TabStrip({ tabs, activeSlug, botBySlug, isUnread, isPosted, home
                   e.preventDefault();
                   onSelect(item.slug);
                 }}
-                className={cn('flex min-w-0 flex-1 items-center justify-center gap-2 text-sm @min-[96px]:justify-start @min-[96px]:pl-3 @min-[96px]:pr-1', active ? 'pl-3 font-medium' : 'text-zinc-600 dark:text-zinc-400')}
+                className={cn('flex min-w-0 flex-1 items-center justify-center gap-2 text-sm @min-[96px]:justify-start @min-[96px]:pl-3 @min-[96px]:pr-1', active ? 'pl-3 font-medium' : 'text-fg-muted')}
               >
                 <span className="relative flex shrink-0">
                   <TabIcon item={item} bot={botBySlug.get(item.slug)} />
@@ -92,7 +92,7 @@ export function TabStrip({ tabs, activeSlug, botBySlug, isUnread, isPosted, home
                   {unread && !active && <span className="absolute -right-1 -top-1 size-2 rounded-full bg-blue-500 ring-2 ring-zinc-100 @min-[96px]:hidden dark:ring-zinc-900" aria-label="Unread" />}
                 </span>
                 <span className="hidden min-w-0 truncate @min-[96px]:block">
-                  {item.iid && <span className="mr-1.5 hidden font-mono text-xs text-zinc-500 @min-[150px]:inline">!{item.iid}</span>}
+                  {item.iid && <span className="mr-1.5 hidden font-mono text-xs text-fg-muted @min-[150px]:inline">!{item.iid}</span>}
                   {item.title}
                 </span>
               </a>

@@ -206,7 +206,7 @@ export function App() {
       ) : (
         <div className="mx-auto max-w-7xl px-6 py-8">
           <h1 className="text-3xl font-semibold tracking-tight">Review queue</h1>
-          <p className="mt-1 text-zinc-500">Open merge requests, reviewed by the bot.{data && !data.allowPosting && ' Read-only: nothing is posted to GitLab.'}</p>
+          <p className="mt-1 text-fg-muted">Open merge requests, reviewed by the bot.{data && !data.allowPosting && ' Read-only: nothing is posted to GitLab.'}</p>
 
 
           <div className="mt-6 flex flex-wrap items-center gap-2 border-b border-zinc-200 pb-3 dark:border-zinc-800">
@@ -231,7 +231,7 @@ export function App() {
                   aria-label={label}
                   title={label}
                   onClick={() => setSize(value)}
-                  className={cn('rounded-md p-1.5 transition-colors', size === value ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900' : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800')}
+                  className={cn('rounded-md p-1.5 transition-colors', size === value ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900' : 'text-fg-muted hover:bg-zinc-100 dark:hover:bg-zinc-800')}
                 >
                   <Icon className="size-4" />
                 </button>
@@ -242,7 +242,7 @@ export function App() {
           <StatStrip counts={counts} keys={[...tileKeys]} active={filter} onChange={setFilter} />
 
           {data && visible.length === 0 ? (
-            <div className="mt-16 flex flex-col items-center gap-2 text-zinc-500"><Inbox className="size-8" />No reviews match this filter.</div>
+            <div className="mt-16 flex flex-col items-center gap-2 text-fg-muted"><Inbox className="size-8" />No reviews match this filter.</div>
           ) : (
             <div className={cn('mt-6 grid', size === 'small' ? 'gap-3' : 'gap-4', GRID[size])}>
               {visible.map((i) => <ReviewCard key={i.slug} item={i} unread={isUnread(i)} size={size} />)}

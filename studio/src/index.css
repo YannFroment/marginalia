@@ -9,6 +9,24 @@
 
 :root {
   color-scheme: light dark;
+
+  /* Text roles. Secondary text was zinc-500 everywhere, which is 4.1:1 on the dark
+     canvas and 3.7:1 on dark cards (AA needs 4.5:1). Each role is remapped per theme:
+     muted = secondary copy (>= 6:1 on canvas and cards in both themes);
+     subtle = icons and non-text marks only (>= 3:1), never sentences. */
+  --fg-muted: var(--color-zinc-600);
+  --fg-subtle: var(--color-zinc-500);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg-muted: var(--color-zinc-400);
+    --fg-subtle: var(--color-zinc-500);
+  }
+}
+
+@theme inline {
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
 }
 
 body {

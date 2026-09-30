@@ -37,7 +37,7 @@ export function ReviewCard({ item, unread, size }: { item: ReviewItem; unread: b
     >
       {unread && <span className={cn('absolute size-2 rounded-full bg-blue-500', small ? 'right-2.5 top-2.5' : 'right-3 top-3')} title="Unread" />}
 
-      <motion.div layout="position" transition={LAYOUT} className="flex items-center gap-2 text-xs text-zinc-500">
+      <motion.div layout="position" transition={LAYOUT} className="flex items-center gap-2 text-xs text-fg-muted">
         {item.iid && <span className="font-mono">!{item.iid}</span>}
         {item.kind === 'comments' && <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-violet-700 dark:text-violet-300">triage</span>}
         <span>{timeAgo(item.reviewedAt)}</span>
@@ -49,15 +49,15 @@ export function ReviewCard({ item, unread, size }: { item: ReviewItem; unread: b
         {large && (
           <motion.div key="details" layout="position" {...reveal} className="space-y-3">
             {item.branch && (
-              <div className="flex items-center gap-1.5 font-mono text-xs text-zinc-500">
+              <div className="flex items-center gap-1.5 font-mono text-xs text-fg-muted">
                 <GitBranch className="size-3.5 shrink-0" /><span className="truncate">{item.branch}</span>
               </div>
             )}
-            {item.summary && <p className="line-clamp-4 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">{item.summary}</p>}
+            {item.summary && <p className="line-clamp-4 text-sm leading-relaxed text-fg-muted">{item.summary}</p>}
             {item.highlights.length > 0 && (
               <ul className="space-y-1.5">
                 {item.highlights.map((h, i) => (
-                  <li key={i} className="flex gap-2 text-xs leading-snug text-zinc-600 dark:text-zinc-400">
+                  <li key={i} className="flex gap-2 text-xs leading-snug text-fg-muted">
                     <span className={cn('mt-1 size-1.5 shrink-0 rounded-full', SEVERITY_DOT[h.severity])} title={h.severity} />
                     <span className="line-clamp-2">{h.text}</span>
                   </li>
@@ -76,7 +76,7 @@ export function ReviewCard({ item, unread, size }: { item: ReviewItem; unread: b
 
       <AnimatePresence initial={false} mode="popLayout">
         {!small && (
-          <motion.div key="footer" layout="position" {...reveal} className="flex items-center justify-between text-xs text-zinc-500">
+          <motion.div key="footer" layout="position" {...reveal} className="flex items-center justify-between text-xs text-fg-muted">
             <span className="flex items-center gap-1 truncate">{item.author && <><User className="size-3" />{item.author}</>}</span>
             <span className={cn('flex items-center gap-0.5 font-medium text-zinc-700 transition-opacity dark:text-zinc-300', large ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}>Open<ArrowUpRight className="size-3.5" /></span>
           </motion.div>
