@@ -40,19 +40,19 @@ export function Sidebar({ items, activeSlug, botBySlug, isUnread, open, onSelect
 
   return (
     <>
-      {open && <div className="fixed inset-x-0 bottom-0 top-24 z-20 bg-black/40 lg:hidden" onClick={onClose} aria-hidden />}
+      {open && <div className="fixed inset-x-0 bottom-0 top-[var(--chrome-h)] z-20 bg-black/40 lg:hidden" onClick={onClose} aria-hidden />}
       <aside
         aria-label="All reviews"
         aria-hidden={!open}
         className={cn(
           'z-30 shrink-0 overflow-hidden border-zinc-200 bg-zinc-50 transition-[width,border-color] duration-300 ease-out dark:border-zinc-800 dark:bg-zinc-950',
-          'fixed bottom-0 left-0 top-24 lg:sticky lg:top-24 lg:h-[calc(100vh-6rem)] lg:self-start',
+          'fixed bottom-0 left-0 top-[var(--chrome-h)] lg:sticky lg:top-[var(--chrome-h)] lg:h-[calc(100vh-var(--chrome-h))] lg:self-start',
           open ? 'w-72 border-r' : 'w-0 border-r-0',
         )}
       >
         <div className="flex h-full w-72 flex-col">
           <div className="p-3">
-            <label className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/50 dark:border-zinc-800 dark:bg-zinc-900">
+            <label className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2.5 text-sm focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/50 dark:border-zinc-800 dark:bg-zinc-900">
               <Search className="size-4 shrink-0 text-fg-subtle" />
               <input
                 aria-label="Filter reviews"
@@ -60,7 +60,7 @@ export function Sidebar({ items, activeSlug, botBySlug, isUnread, open, onSelect
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Filter reviews…"
                 tabIndex={open ? 0 : -1}
-                className="w-full bg-transparent outline-none placeholder:text-fg-muted"
+                className="touch-target min-h-8 w-full bg-transparent py-1.5 outline-none placeholder:text-fg-muted"
               />
             </label>
           </div>

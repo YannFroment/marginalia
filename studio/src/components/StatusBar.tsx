@@ -54,7 +54,7 @@ function PollInterval({ minutes }: { minutes: number }) {
             setPending(null);
           }
         }}
-        className={`rounded-md border bg-white px-1.5 py-1 text-xs text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800`}
+        className={`touch-target rounded-md border bg-white px-1.5 py-1 text-xs text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800`}
       >
         {options.map((m) => <option key={m} value={m}>{m < 60 ? `${m} min` : `${m / 60} h`}</option>)}
       </select>
@@ -66,7 +66,7 @@ export function StatusBar({ status, pollMinutes, onOpenPalette, onHome }: { stat
   return (
     <div className="border-b border-zinc-200 dark:border-zinc-800">
       <div className="flex h-14 items-center gap-4 px-4">
-        <button onClick={onHome} className="font-semibold tracking-tight">Marginalia</button>
+        <button onClick={onHome} className="touch-target font-semibold tracking-tight">Marginalia</button>
         <div className="ml-2 text-sm"><BotState status={status} /></div>
         {status?.lastPoll && (
           <span className="hidden text-xs text-fg-muted md:inline">last poll {timeAgo(status.lastPoll.at)}</span>
@@ -74,7 +74,7 @@ export function StatusBar({ status, pollMinutes, onOpenPalette, onHome }: { stat
         {pollMinutes !== null && <div className="ml-auto"><PollInterval minutes={pollMinutes} /></div>}
         <button
           onClick={onOpenPalette}
-          className="ml-2 flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-fg-muted hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
+          className="touch-target ml-2 flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-fg-muted hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
         >
           Search…
           <kbd className="flex items-center gap-0.5 rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800"><Command className="size-3" />K</kbd>

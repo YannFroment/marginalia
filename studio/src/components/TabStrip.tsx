@@ -24,14 +24,14 @@ interface Props {
 export function TabStrip({ tabs, activeSlug, botBySlug, isUnread, isPosted, homeUnread, sidebarOpen, sidebarAvailable, onToggleSidebar, onSelect, onClose }: Props) {
   const reduceMotion = useReducedMotion();
   return (
-    <nav aria-label="Open reviews" className="flex h-10 items-stretch border-b border-zinc-200 bg-zinc-100/60 dark:border-zinc-800 dark:bg-zinc-900/40">
+    <nav aria-label="Open reviews" className="flex h-[var(--strip-h)] items-stretch border-b border-zinc-200 bg-zinc-100/60 dark:border-zinc-800 dark:bg-zinc-900/40">
       <button
         onClick={onToggleSidebar}
         disabled={!sidebarAvailable}
         aria-pressed={sidebarOpen}
         aria-label="Toggle sidebar"
         title={sidebarAvailable ? 'Toggle sidebar (⌘B)' : 'Home already lists every review'}
-        className={cn('flex w-11 shrink-0 items-center justify-center border-r border-zinc-200 dark:border-zinc-800', !sidebarAvailable ? 'text-zinc-300 dark:text-zinc-700' : sidebarOpen ? 'bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100' : 'text-fg-muted hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60')}
+        className={cn('touch-target flex w-11 shrink-0 items-center justify-center border-r border-zinc-200 dark:border-zinc-800', !sidebarAvailable ? 'text-zinc-300 dark:text-zinc-700' : sidebarOpen ? 'bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100' : 'text-fg-muted hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60')}
       >
         <PanelLeft className="size-4" />
       </button>
@@ -97,14 +97,14 @@ export function TabStrip({ tabs, activeSlug, botBySlug, isUnread, isPosted, home
                   {item.title}
                 </span>
               </a>
-              <span className={cn('w-7 shrink-0 items-center justify-center', active ? 'flex' : 'hidden @min-[96px]:flex')}>
+              <span className={cn('w-7 shrink-0 items-center justify-center [@media(pointer:coarse)]:w-11', active ? 'flex' : 'hidden @min-[96px]:flex')}>
                 {isPosted(item) && <Check className="size-3.5 text-emerald-600 group-hover:hidden dark:text-emerald-400" aria-hidden />}
                 {unread && !isPosted(item) && <span className="size-2 rounded-full bg-blue-500 group-hover:hidden" aria-hidden />}
                 <button
                   onClick={() => onClose(item.slug)}
                   aria-label={`Close ${item.title}`}
                   title="Close tab (Ctrl+W or ⌥W)"
-                  className={cn('hidden size-5 items-center justify-center rounded hover:bg-zinc-300/70 group-hover:flex dark:hover:bg-zinc-700', active && !isPosted(item) && !unread && 'flex')}
+                  className={cn('touch-target hidden size-6 items-center justify-center rounded hover:bg-zinc-300/70 group-hover:flex dark:hover:bg-zinc-700', active && !isPosted(item) && !unread && 'flex')}
                 >
                   <X className="size-3.5" />
                 </button>

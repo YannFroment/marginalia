@@ -217,7 +217,7 @@ export function App() {
                   setTab(t);
                   setFilter('all');
                 }}
-                className={cn('rounded-lg px-3 py-1.5 text-sm', tab === t ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900' : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800')}
+                className={cn('touch-target rounded-lg px-3 py-1.5 text-sm', tab === t ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900' : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800')}
               >
                 {t === 'review' ? 'Reviews' : 'Triage'}
               </button>
@@ -231,7 +231,7 @@ export function App() {
                   aria-label={label}
                   title={label}
                   onClick={() => setSize(value)}
-                  className={cn('rounded-md p-1.5 transition-colors', size === value ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900' : 'text-fg-muted hover:bg-zinc-100 dark:hover:bg-zinc-800')}
+                  className={cn('touch-target flex items-center justify-center rounded-md p-1.5 transition-colors', size === value ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900' : 'text-fg-muted hover:bg-zinc-100 dark:hover:bg-zinc-800')}
                 >
                   <Icon className="size-4" />
                 </button>

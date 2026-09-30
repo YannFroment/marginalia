@@ -42,7 +42,7 @@ export function CommandPalette({ open, setOpen, items, onSelect }: { open: boole
                 onSelect(it.slug);
                 setOpen(false);
               }}
-              className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm aria-selected:bg-zinc-100 dark:aria-selected:bg-zinc-800"
+              className="touch-target flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm aria-selected:bg-zinc-100 dark:aria-selected:bg-zinc-800"
             >
               <FileText className="size-4 shrink-0 text-fg-subtle" />
               <span className="min-w-0 flex-1 truncate">{it.iid ? <span className="mr-2 font-mono text-xs text-fg-muted">!{it.iid}</span> : null}{it.title}</span>

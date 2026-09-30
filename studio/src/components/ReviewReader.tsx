@@ -72,7 +72,7 @@ function CopyButton({ getText, label }: { getText: () => string; label: string }
           toast.error('Could not copy: clipboard access was denied');
         }
       }}
-      className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+      className="touch-target inline-flex items-center justify-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
     >
       {done ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
       {done ? 'Copied' : label}
@@ -130,7 +130,7 @@ function ConfirmPost({ iid, text, onCancel, onConfirm, fallbackRef }: { iid: str
         <p className="mt-1 text-sm text-fg-muted">It will be posted on GitLab under your account and visible to the MR author.</p>
         <pre id="confirm-post-text" tabIndex={0} aria-label="Comment text" className="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm dark:border-zinc-800 dark:bg-zinc-950">{text}</pre>
         <div className="mt-4 flex justify-end gap-2">
-          <button data-autofocus disabled={busy} onClick={onCancel} className="rounded-lg border border-zinc-200 px-3 py-1.5 text-sm hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Cancel</button>
+          <button data-autofocus disabled={busy} onClick={onCancel} className="touch-target rounded-lg border border-zinc-200 px-3 py-1.5 text-sm hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Cancel</button>
           <button
             disabled={busy}
             onClick={async () => {
@@ -142,7 +142,7 @@ function ConfirmPost({ iid, text, onCancel, onConfirm, fallbackRef }: { iid: str
                 setBusy(false);
               }
             }}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-60"
+            className="touch-target inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-60"
           >
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}Post comment
           </button>
@@ -198,13 +198,13 @@ function Quote({ children }: { children?: ReactNode }) {
         </span>
         <span className="flex items-center gap-1.5 normal-case tracking-normal">
           {edited !== null && (
-            <button onClick={reset} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">
+            <button onClick={reset} className="touch-target inline-flex items-center justify-center gap-1 rounded-md px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">
               <Undo2 className="size-3.5" />Reset
             </button>
           )}
           <button
             onClick={() => (editing ? setEditing(false) : startEdit())}
-            className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+            className="touch-target inline-flex items-center justify-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
           >
             {editing ? <Check className="size-3.5" /> : <Pencil className="size-3.5" />}
             {editing ? 'Done' : 'Edit'}
@@ -213,7 +213,7 @@ function Quote({ children }: { children?: ReactNode }) {
           {post.allowPosting && post.slug && post.iid && !postedInfo && (
             <button
               onClick={() => setConfirming(true)}
-              className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-500"
+              className="touch-target inline-flex items-center justify-center gap-1 rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-500"
             >
               <Send className="size-3.5" />Post to GitLab
             </button>
@@ -342,12 +342,12 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
             onClick={() => setSemantic((v) => !v)}
             aria-pressed={semantic}
             title="Typography that follows meaning (semfont): colour for sentiment, weight for importance, slant for hedges"
-            className={cn('inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm', semantic ? 'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300' : 'border-zinc-200 bg-white text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400')}
+            className={cn('touch-target inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm', semantic ? 'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300' : 'border-zinc-200 bg-white text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400')}
           >
             <Sparkles className="size-3.5" />Semantic type
           </button>
           {item?.webUrl && (
-            <a href={item.webUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800">
+            <a href={item.webUrl} target="_blank" rel="noreferrer" className="touch-target inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800">
               Open in GitLab<ExternalLink className="size-3.5" />
             </a>
           )}
@@ -395,7 +395,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
           <aside
             aria-label="Review details"
             aria-hidden={!panelOpen}
-            className={cn('sticky top-28 hidden h-[calc(100vh-8rem)] shrink-0 self-start overflow-hidden transition-[width,opacity] duration-300 ease-out lg:block', panelOpen ? 'w-64 opacity-100' : 'w-0 opacity-0')}
+            className={cn('sticky top-[calc(var(--chrome-h)+1rem)] hidden h-[calc(100vh-var(--chrome-h)-2rem)] shrink-0 self-start overflow-hidden transition-[width,opacity] duration-300 ease-out lg:block', panelOpen ? 'w-64 opacity-100' : 'w-0 opacity-0')}
           >
             <div className="flex h-full w-64 flex-col gap-5 overflow-y-auto pr-1 text-sm">
               <section>
