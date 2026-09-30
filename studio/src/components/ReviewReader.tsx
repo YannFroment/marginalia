@@ -1,12 +1,21 @@
-import { Children, createElement, isValidElement, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Children, createElement, isValidElement, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
+import bash from 'highlight.js/lib/languages/bash';
+import css from 'highlight.js/lib/languages/css';
+import diff from 'highlight.js/lib/languages/diff';
+import javascript from 'highlight.js/lib/languages/javascript';
+import json from 'highlight.js/lib/languages/json';
+import typescript from 'highlight.js/lib/languages/typescript';
+import xml from 'highlight.js/lib/languages/xml';
+import yaml from 'highlight.js/lib/languages/yaml';
 import * as Collapsible from '@radix-ui/react-collapsible';
 import { SemanticText } from 'semfont';
 import { toast } from 'sonner';
 import { useScrollLock } from '../lib/useScrollLock';
 import { usePersistentState } from '../lib/layout';
+import { useModalFocus } from '../lib/useModalFocus';
 import { createContext } from 'react';
 import { Check, ChevronRight, Copy, ExternalLink, Loader2, PanelRight, Pencil, Send, Sparkles, Undo2 } from 'lucide-react';
 import { postComment, type PostedInfo, type ReviewItem } from '../lib/api';
@@ -71,7 +80,7 @@ function CopyButton({ getText, label }: { getText: () => string; label: string }
           toast.error('Could not copy: clipboard access was denied');
         }
       }}
-      className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+      className="touch-target inline-flex items-center justify-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
     >
       {done ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
       {done ? 'Copied' : label}
@@ -111,22 +120,25 @@ interface PostContextValue {
 const PostContext = createContext<PostContextValue>({ allowPosting: false, slug: null, iid: null, posted: {}, reload: () => {} });
 
 // Nothing is sent until "Post comment" is clicked here, with the final text.
-function ConfirmPost({ iid, text, onCancel, onConfirm }: { iid: string | number; text: string; onCancel: () => void; onConfirm: () => Promise<void> }) {
+function ConfirmPost({ iid, text, onCancel, onConfirm, fallbackRef }: { iid: string | number; text: string; onCancel: () => void; onConfirm: () => Promise<void>; fallbackRef: RefObject<HTMLElement | null> }) {
   const [busy, setBusy] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
   useScrollLock(true);
+  // Focus moves to Cancel (the safe choice), stays inside, and returns to the opener on close.
+  useModalFocus(true, dialogRef, { initial: '[data-autofocus]', fallback: fallbackRef });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !busy && onCancel();
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [busy, onCancel]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={busy ? undefined : onCancel} role="dialog" aria-modal="true" aria-label="Confirm posting">
-      <div className="w-full max-w-lg rounded-xl border border-zinc-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-base font-semibold">Post this comment on !{iid}?</h2>
-        <p className="mt-1 text-sm text-zinc-500">It will be posted on GitLab under your account and visible to the MR author.</p>
-        <pre className="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm dark:border-zinc-800 dark:bg-zinc-950">{text}</pre>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={busy ? undefined : onCancel}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="confirm-post-title" aria-describedby="confirm-post-text" className="w-full max-w-lg rounded-xl border border-zinc-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900" onClick={(e) => e.stopPropagation()}>
+        <h2 id="confirm-post-title" className="text-base font-semibold">Post this comment on !{iid}?</h2>
+        <p className="mt-1 text-sm text-fg-muted">It will be posted on GitLab under your account and visible to the MR author.</p>
+        <pre id="confirm-post-text" tabIndex={0} aria-label="Comment text" className="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm dark:border-zinc-800 dark:bg-zinc-950">{text}</pre>
         <div className="mt-4 flex justify-end gap-2">
-          <button disabled={busy} onClick={onCancel} className="rounded-lg border border-zinc-200 px-3 py-1.5 text-sm hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Cancel</button>
+          <button data-autofocus disabled={busy} onClick={onCancel} className="touch-target rounded-lg border border-zinc-200 px-3 py-1.5 text-sm hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Cancel</button>
           <button
             disabled={busy}
             onClick={async () => {
@@ -138,9 +150,9 @@ function ConfirmPost({ iid, text, onCancel, onConfirm }: { iid: string | number;
                 setBusy(false);
               }
             }}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-60"
+            className="touch-target inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-60"
           >
-            {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}Post comment
+            {busy ? <Loader2 className="size-4 animate-spin motion-reduce:animate-pulse" /> : <Send className="size-4" />}Post comment
           </button>
         </div>
       </div>
@@ -161,6 +173,8 @@ function Quote({ children }: { children?: ReactNode }) {
   const commentId = key.split(':').pop() ?? '';
   const postedInfo = post.slug ? post.posted[`${post.slug}:${commentId}`] : undefined;
   const [confirming, setConfirming] = useState(false);
+  // Focus lands here if the button that opened the dialog is gone (a posted comment replaces it).
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const startEdit = () => {
     const text = ref.current?.innerText.trim() ?? original;
@@ -180,7 +194,7 @@ function Quote({ children }: { children?: ReactNode }) {
   };
 
   return (
-    <div className="not-prose my-4 rounded-lg border border-blue-500/30 bg-blue-500/5 p-4">
+    <div ref={rootRef} tabIndex={-1} className="not-prose my-4 rounded-lg border border-blue-500/30 bg-blue-500/5 p-4 focus:outline-none">
       <div className="mb-2 flex items-center justify-between gap-2 text-xs font-medium uppercase tracking-wide text-blue-700 dark:text-blue-300">
         <span>
           Comment to post{edited !== null && !editing ? ' · edited' : ''}
@@ -192,13 +206,13 @@ function Quote({ children }: { children?: ReactNode }) {
         </span>
         <span className="flex items-center gap-1.5 normal-case tracking-normal">
           {edited !== null && (
-            <button onClick={reset} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">
+            <button onClick={reset} className="touch-target inline-flex items-center justify-center gap-1 rounded-md px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">
               <Undo2 className="size-3.5" />Reset
             </button>
           )}
           <button
             onClick={() => (editing ? setEditing(false) : startEdit())}
-            className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+            className="touch-target inline-flex items-center justify-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
           >
             {editing ? <Check className="size-3.5" /> : <Pencil className="size-3.5" />}
             {editing ? 'Done' : 'Edit'}
@@ -207,7 +221,7 @@ function Quote({ children }: { children?: ReactNode }) {
           {post.allowPosting && post.slug && post.iid && !postedInfo && (
             <button
               onClick={() => setConfirming(true)}
-              className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-500"
+              className="touch-target inline-flex items-center justify-center gap-1 rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-500"
             >
               <Send className="size-3.5" />Post to GitLab
             </button>
@@ -220,7 +234,7 @@ function Quote({ children }: { children?: ReactNode }) {
           value={edited ?? ''}
           onChange={(e) => update(e.target.value)}
           rows={Math.min(14, Math.max(4, (edited ?? '').split('\n').length + 2))}
-          className="w-full resize-y rounded-md border border-zinc-300 bg-white p-3 text-sm leading-relaxed outline-none focus:border-blue-500 dark:border-zinc-700 dark:bg-zinc-900"
+          className="w-full resize-y rounded-md border border-zinc-300 bg-white p-3 text-sm leading-relaxed outline-none focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/50 dark:border-zinc-700 dark:bg-zinc-900"
         />
       ) : edited !== null ? (
         <div className="whitespace-pre-wrap text-sm leading-relaxed">{edited}</div>
@@ -231,6 +245,7 @@ function Quote({ children }: { children?: ReactNode }) {
         <ConfirmPost
           iid={post.iid}
           text={current}
+          fallbackRef={rootRef}
           onCancel={() => setConfirming(false)}
           onConfirm={async () => {
             const posted = await postComment(post.slug!, commentId, current);
@@ -243,6 +258,14 @@ function Quote({ children }: { children?: ReactNode }) {
     </div>
   );
 }
+
+// A handful of languages instead of highlight.js's whole "common" set: reviews quote
+// TypeScript, config and shell, and rarely anything else (unknown fences stay plain).
+const HIGHLIGHT = {
+  detect: false,
+  languages: { bash, css, diff, javascript, json, typescript, xml, yaml },
+  aliases: { bash: ['sh', 'shell', 'zsh'], javascript: ['js', 'jsx', 'mjs'], typescript: ['ts', 'tsx'], xml: ['html', 'svg'], yaml: ['yml'] },
+};
 
 // Vocabulary of code reviews, merged over semfont's defaults.
 const LEXICON = {
@@ -291,7 +314,7 @@ function Md({ children, semantic }: { children: string; semantic: boolean }) {
   const components = useMemo(() => makeComponents(semantic, ctx), [semantic, ctx]);
   return (
     <div className={cn('prose prose-zinc max-w-none [overflow-wrap:anywhere] prose-headings:tracking-tight prose-code:before:content-none prose-code:after:content-none prose-code:rounded prose-code:bg-zinc-100 prose-code:px-1 prose-code:py-0.5 prose-code:text-[0.85em] prose-code:font-normal dark:prose-invert dark:prose-code:bg-zinc-800 [&_pre_code]:bg-transparent [&_pre_code]:p-0', semantic && 'semfont')}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeHighlight, { detect: false }]]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeHighlight, HIGHLIGHT]]} components={components}>
         {children}
       </ReactMarkdown>
     </div>
@@ -310,7 +333,8 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
   const setAll = (open: boolean) => setOverrides(Object.fromEntries(sections.map((s) => [s.id, open])));
   const jump = (id: string) => {
     setOverrides((o) => ({ ...o, [id]: true }));
-    requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }));
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: calm ? 'auto' : 'smooth' }));
   };
 
   return (
@@ -319,7 +343,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
     <div className="px-6 py-6">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="mb-1 flex items-center gap-2 text-sm text-zinc-500">
+          <div className="mb-1 flex items-center gap-2 text-sm text-fg-muted">
             {item?.iid && <span className="font-mono">!{item.iid}</span>}
             {item?.author && <span>· {item.author}</span>}
             {item && <span>· {timeAgo(item.reviewedAt)}</span>}
@@ -335,12 +359,12 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
             onClick={() => setSemantic((v) => !v)}
             aria-pressed={semantic}
             title="Typography that follows meaning (semfont): colour for sentiment, weight for importance, slant for hedges"
-            className={cn('inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm', semantic ? 'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300' : 'border-zinc-200 bg-white text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400')}
+            className={cn('touch-target inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm', semantic ? 'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300' : 'border-zinc-200 bg-white text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400')}
           >
             <Sparkles className="size-3.5" />Semantic type
           </button>
           {item?.webUrl && (
-            <a href={item.webUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800">
+            <a href={item.webUrl} target="_blank" rel="noreferrer" className="touch-target inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800">
               Open in GitLab<ExternalLink className="size-3.5" />
             </a>
           )}
@@ -349,7 +373,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
             aria-pressed={panelOpen}
             aria-label="Toggle side panel"
             title="Toggle side panel"
-            className={cn('hidden rounded-lg border p-1.5 lg:block', panelOpen ? 'border-zinc-300 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800' : 'border-zinc-200 bg-white text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900')}
+            className={cn('hidden rounded-lg border p-1.5 lg:block', panelOpen ? 'border-zinc-300 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800' : 'border-zinc-200 bg-white text-fg-muted dark:border-zinc-800 dark:bg-zinc-900')}
           >
             <PanelRight className="size-4" />
           </button>
@@ -357,7 +381,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
       </div>
 
       {markdown === null ? (
-        <p className="text-zinc-500">Loading…</p>
+        <p className="text-fg-muted">Loading…</p>
       ) : (
         <div className="flex gap-8">
           <article className="mx-auto w-full min-w-0 max-w-[80ch] space-y-3">
@@ -370,10 +394,13 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
                 onOpenChange={(o) => setOverrides((prev) => ({ ...prev, [s.id]: o }))}
                 className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
               >
-                <Collapsible.Trigger className="group flex w-full items-center gap-2 px-4 py-3 text-left font-medium">
-                  <ChevronRight className={cn('size-4 shrink-0 text-zinc-400 transition-transform', isOpen(s) && 'rotate-90')} />
-                  {s.title}
-                </Collapsible.Trigger>
+                {/* A real heading around the trigger, so screen-reader users can jump between sections. */}
+                <h2 className="text-base">
+                  <Collapsible.Trigger className="group flex w-full items-center gap-2 rounded-xl px-4 py-3 text-left font-medium">
+                    <ChevronRight className={cn('size-4 shrink-0 text-fg-subtle transition-transform motion-reduce:transition-none', isOpen(s) && 'rotate-90')} aria-hidden />
+                    {s.title}
+                  </Collapsible.Trigger>
+                </h2>
                 <Collapsible.Content className="border-t border-zinc-100 px-4 py-4 dark:border-zinc-800">
                   <Md semantic={semantic}>{s.body}</Md>
                 </Collapsible.Content>
@@ -385,11 +412,11 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
           <aside
             aria-label="Review details"
             aria-hidden={!panelOpen}
-            className={cn('sticky top-28 hidden h-[calc(100vh-8rem)] shrink-0 self-start overflow-hidden transition-[width,opacity] duration-300 ease-out lg:block', panelOpen ? 'w-64 opacity-100' : 'w-0 opacity-0')}
+            className={cn('sticky top-[calc(var(--chrome-h)+1rem)] hidden h-[calc(100vh-var(--chrome-h)-2rem)] shrink-0 self-start overflow-hidden transition-[width,opacity] duration-300 ease-out motion-reduce:transition-none lg:block', panelOpen ? 'w-64 opacity-100' : 'w-0 opacity-0')}
           >
             <div className="flex h-full w-64 flex-col gap-5 overflow-y-auto pr-1 text-sm">
               <section>
-                <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">Details</h2>
+                <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-fg-muted">Details</h2>
                 <dl className="space-y-1.5">
                   {item?.iid && <Row label="Merge request">{item.webUrl ? <a className="text-blue-600 hover:underline dark:text-blue-400" href={item.webUrl} target="_blank" rel="noreferrer">!{item.iid}</a> : `!${item.iid}`}</Row>}
                   {item?.author && <Row label="Author">{item.author}</Row>}
@@ -399,7 +426,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
                 </dl>
               </section>
               <section className="min-h-0">
-                <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-wide text-zinc-500">
+                <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-wide text-fg-muted">
                   <h2 className="font-medium">Contents</h2>
                   <button className="normal-case hover:text-zinc-900 dark:hover:text-zinc-100" tabIndex={panelOpen ? 0 : -1} onClick={() => setAll(!allOpen)}>{allOpen ? 'Collapse all' : 'Expand all'}</button>
                 </div>
@@ -434,7 +461,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted,
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex justify-between gap-3">
-      <dt className="shrink-0 text-zinc-500">{label}</dt>
+      <dt className="shrink-0 text-fg-muted">{label}</dt>
       <dd className="min-w-0 text-right">{children}</dd>
     </div>
   );
