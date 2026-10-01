@@ -1,17 +1,17 @@
 import './lib/node-check.mjs';
 import { mkdir } from 'node:fs/promises';
 import { watch } from 'node:fs';
-import { GITLAB_USERNAME, TRIAGE_COMMAND, allowedTargets, REVIEWS_DIR, ROOT } from './lib/config.mjs';
+import { GITLAB_USERNAME, TRIAGE_COMMAND, allowedTargets, REVIEWS_DIR, ROOT, encodedProjectId } from './lib/config.mjs';
 import { loadSettings, pollIntervalMs } from './lib/settings.mjs';
-import { startStudio } from './studio/server.mjs';
+import { startStudio, setActionHandler } from './studio/server.mjs';
 import { isFancyTerminal, c, timestamp, log, mrTag } from './lib/log.mjs';
 import { loadState, saveState } from './lib/state.mjs';
 import { status, writeStatus, setMrStatus } from './lib/status.mjs';
 import { notify } from './lib/notify.mjs';
-import { listOpenMergeRequests, reviewFileCoversLastPush, latestPeerCommentAt } from './lib/gitlab.mjs';
+import { gitlabRequest, listOpenMergeRequests, reviewFileCoversLastPush, latestPeerCommentAt } from './lib/gitlab.mjs';
 import { reviewOutputPath, mrCommentsOutputPath, mtimeOrNull } from './lib/paths.mjs';
 import { ensureBotWorktree } from './lib/worktree.mjs';
-import { runReview, runMrComments } from './lib/claude-runner.mjs';
+import { runReview, runMrComments, runDeepen } from './lib/claude-runner.mjs';
 import { analyzeStacks } from './lib/stack.mjs';
 
 async function poll() {
@@ -87,6 +87,7 @@ async function poll() {
       updatedAt: mr.updated_at,
     })),
   ];
+  markQueued();
   await writeStatus();
   const needCount = toReview.length + toTriage.length;
   const needColor = needCount > 0 ? c.green : c.dim;
@@ -239,6 +240,77 @@ async function runPoll() {
     scheduleNextPoll(Date.now());
     await writeStatus();
   }
+  if (actionQueue.length) drainActions();
+}
+
+// On-demand runs from the studio ("Deep review"). They share the bot
+// worktree with the polls, so they wait for the running poll and polls wait
+// for them.
+const ACTIONS = {
+  deepen: { run: runDeepen, busy: 'deepening', label: 'Deep review', done: 'Deep review ready' },
+};
+const actionQueue = [];
+let runningAction = null;
+
+// A queued action shows on its MR ("qa-queued"...) until it starts, even across
+// the poll that rebuilds the MR list.
+function markQueued() {
+  for (const { iid, kind } of actionQueue.filter((a) => a !== runningAction)) {
+    const entry = status.mrs.find((m) => m.iid === iid);
+    if (entry) entry.status = `${kind}-queued`;
+  }
+}
+
+function requestAction(iid, kind) {
+  if (actionQueue.some((a) => a.iid === iid && a.kind === kind)) return 'queued';
+  actionQueue.push({ iid, kind });
+  if (isPolling) {
+    markQueued();
+    writeStatus();
+    return 'queued';
+  }
+  drainActions();
+  return 'started';
+}
+
+async function drainActions() {
+  if (isPolling) return;
+  isPolling = true;
+  try {
+    while (actionQueue.length) {
+      runningAction = actionQueue[0];
+      const { iid, kind } = runningAction;
+      const action = ACTIONS[kind];
+      let mr = null;
+      try {
+        mr = await gitlabRequest(`/projects/${encodedProjectId}/merge_requests/${iid}`);
+        status.phase = 'reviewing';
+        status.current = { iid: mr.iid, title: mr.title, web_url: mr.web_url, startedAt: new Date().toISOString() };
+        await setMrStatus(mr, { status: action.busy });
+        const outcome = await action.run(mr);
+        if (outcome === 'reviewed') {
+          await setMrStatus(mr, { status: 'up_to_date', reviewedAt: new Date().toISOString() });
+          notify(action.done, `!${mr.iid} ${mr.title}`, reviewOutputPath(mr));
+        } else {
+          await setMrStatus(mr, { status: 'skipped', error: `Branch "${mr.source_branch}" is checked out in another worktree.` });
+        }
+      } catch (err) {
+        console.error(`${timestamp()} ${c.red}[MR !${iid}] ${action.label} failed:${c.reset}`, err);
+        if (mr) await setMrStatus(mr, { status: 'failed', error: err.message });
+        notify(`${action.label} failed`, `!${iid}`);
+      } finally {
+        actionQueue.shift();
+        runningAction = null;
+      }
+    }
+  } finally {
+    isPolling = false;
+    status.phase = 'idle';
+    status.current = null;
+    // A poll due while we held the worktree was dropped: re-arm it.
+    scheduleNextPoll(Date.now());
+    await writeStatus();
+  }
 }
 
 // The next poll is due `interval` after the previous one *finished* (`from`).
@@ -285,6 +357,7 @@ async function main() {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
   await mkdir(REVIEWS_DIR, { recursive: true });
+  setActionHandler(requestAction);
   startStudio();
   watchSettings();
   await ensureBotWorktree();

@@ -21,6 +21,7 @@ export interface ReviewItem {
   stackId: string | null;
   crossLayer: CrossFinding[];
   stale: boolean;
+  lastDeepAt: string | null;
 }
 
 export interface CrossFinding {
@@ -69,6 +70,7 @@ interface ReviewsPayload {
   projectUrl: string | null;
   settings: { pollIntervalMinutes: number };
   allowPosting: boolean;
+  deepenEnabled?: boolean;
   posted: Record<string, PostedInfo>;
 }
 
@@ -142,6 +144,19 @@ export async function setPollInterval(minutes: number): Promise<void> {
     body: JSON.stringify({ pollIntervalMinutes: minutes }),
   });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
+}
+
+export type ActionKind = 'deepen';
+
+export async function requestAction(slug: string, action: ActionKind): Promise<{ iid: number; state: 'started' | 'queued' }> {
+  const res = await fetch('/api/action', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ slug, action }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+  return j;
 }
 
 export async function postComment(slug: string, commentId: string, body: string, target?: { path: string; line?: number }): Promise<PostedInfo> {

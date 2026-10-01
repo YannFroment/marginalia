@@ -17,8 +17,9 @@ import { useScrollLock } from '../lib/useScrollLock';
 import { usePersistentState } from '../lib/layout';
 import { useModalFocus } from '../lib/useModalFocus';
 import { createContext } from 'react';
-import { Check, ChevronRight, Copy, ExternalLink, Loader2, PanelRight, Pencil, Send, Sparkles, Undo2 } from 'lucide-react';
-import { postComment, type BotStatus, type PostedInfo, type ReviewItem } from '../lib/api';
+import { Check, ChevronRight, Clock, Copy, ExternalLink, Loader2, Microscope, PanelRight, Pencil, Send, Sparkles, Undo2 } from 'lucide-react';
+import { postComment, requestAction, type ActionKind, type BotStatus, type PostedInfo, type ReviewItem } from '../lib/api';
+import type { BotState } from './TabIcon';
 import { cn, timeAgo } from '../lib/utils';
 import { VerdictBadge } from './VerdictBadge';
 import { LinkContext, commentLocation, linkify, linkifyCode, type LinkContextValue } from '../lib/links';
@@ -340,6 +341,46 @@ function Md({ children, semantic }: { children: string; semantic: boolean }) {
   );
 }
 
+type ActionState = 'idle' | 'queued' | 'running';
+
+const ACTION_UI: Record<ActionKind, { Icon: typeof Microscope; label: Record<ActionState, string>; title: string }> = {
+  deepen: {
+    Icon: Microscope,
+    label: { idle: 'Deep review', queued: 'Deep review queued', running: 'Deep review running…' },
+    title: [
+      'Deep review, on top of the automatic review:',
+      '• re-checks each finding and the MR description against the full source files',
+      '• installs the dependencies, runs the type check and the tests related to the changed files',
+      '• reads all the MR discussions, so nothing a reviewer said is repeated',
+      'The deep review replaces the automatic one when done. Slower and more expensive.',
+    ].join('\n'),
+  },
+};
+
+function ActionButton({ slug, action, state }: { slug: string; action: ActionKind; state: ActionState }) {
+  const { Icon, label, title } = ACTION_UI[action];
+  return (
+    <button
+      disabled={state !== 'idle'}
+      onClick={async () => {
+        try {
+          const r = await requestAction(slug, action);
+          toast.info(r.state === 'started' ? `${label.running.replace('…', '')} on !${r.iid}` : `${label.queued} on !${r.iid}: it starts after the running review`);
+        } catch (e) {
+          toast.error(`Could not start: ${label.idle}`, { description: (e as Error).message });
+        }
+      }}
+      title={title}
+      className="touch-target inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+    >
+      {state === 'running' ? <Loader2 className="size-3.5 animate-spin motion-reduce:animate-pulse" aria-hidden /> : state === 'queued' ? <Clock className="size-3.5" aria-hidden /> : <Icon className="size-3.5" aria-hidden />}
+      {label[state]}
+    </button>
+  );
+}
+
+const formatRunAt = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
 // What the run is doing right now, for the MR on screen.
 function LiveRun({ live }: { live: NonNullable<BotStatus['current']> }) {
   const steps = live.progress ?? [];
@@ -361,7 +402,7 @@ function LiveRun({ live }: { live: NonNullable<BotStatus['current']> }) {
   );
 }
 
-export function ReviewReader({ item, markdown, projectUrl, allowPosting, live, posted, reload }: { item: ReviewItem | undefined; markdown: string | null; projectUrl: string | null; allowPosting: boolean; live: BotStatus['current']; posted: Record<string, PostedInfo>; reload: () => void }) {
+export function ReviewReader({ item, markdown, projectUrl, allowPosting, deepenEnabled, botState, live, posted, reload }: { item: ReviewItem | undefined; markdown: string | null; projectUrl: string | null; allowPosting: boolean; deepenEnabled: boolean; botState: BotState; live: BotStatus['current']; posted: Record<string, PostedInfo>; reload: () => void }) {
   const postCtx = useMemo(() => ({ allowPosting, slug: item?.slug ?? null, iid: item?.tracked ? item.iid : null, posted, reload }), [allowPosting, item?.slug, item?.tracked, item?.iid, posted, reload]);
   const linkCtx = useMemo(() => ({ projectUrl, branch: item?.branch ?? null, mrWebUrl: item?.webUrl ?? null }), [projectUrl, item?.branch, item?.webUrl]);
   const { intro, sections } = useMemo(() => splitSections(markdown ?? ''), [markdown]);
@@ -403,6 +444,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, live, p
           >
             <Sparkles className="size-3.5" />Semantic type
           </button>
+          {deepenEnabled && item?.tracked && <ActionButton slug={item.slug} action="deepen" state={botState === 'deepening' ? 'running' : botState === 'deepen-queued' ? 'queued' : 'idle'} />}
           {item?.webUrl && (
             <a href={item.webUrl} target="_blank" rel="noreferrer" className="touch-target inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800">
               Open in GitLab<ExternalLink className="size-3.5" />
@@ -455,7 +497,11 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, live, p
             className={cn('sticky top-[calc(var(--chrome-h)+1rem)] hidden h-[calc(100vh-var(--chrome-h)-2rem)] shrink-0 self-start overflow-hidden transition-[width,opacity] duration-300 ease-out motion-reduce:transition-none lg:block', panelOpen ? 'w-64 opacity-100' : 'w-0 opacity-0')}
           >
             <div className="flex h-full w-64 flex-col gap-5 overflow-y-auto pr-1 text-sm">
-              {live && <LiveRun live={live} />}
+              {live ? <LiveRun live={live} /> : item?.lastDeepAt && (
+                <section className="space-y-1.5 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                  <p className="flex items-center gap-2"><Microscope className="size-4 shrink-0" aria-hidden />Deep review on {formatRunAt(item.lastDeepAt)}</p>
+                </section>
+              )}
               <section>
                 <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-fg-muted">Details</h2>
                 <dl className="space-y-1.5">

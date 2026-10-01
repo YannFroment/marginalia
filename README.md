@@ -208,6 +208,15 @@ the flag the button doesn't exist and `POST /api/post` answers 403.
 The "Review ready" notification and the SwiftBar menu open the studio (the
 notification falls back to VS Code if the studio isn't listening).
 
+**Deep review (on demand).** With `DEEPEN_COMMAND` set (e.g. `/deepen`, see
+`examples/commands/deepen.md`), each tracked review gets a *Deep review* button.
+It queues that command on the MR, in the bot worktree, after any running
+review; the button shows when it is queued, then running. The command is
+pointed at the automatic report and replaces it with a deeper one (checks
+against the source, type check, tests); the date of the last deep review shows
+above the details. It gets the shell (`Bash`) on top of the review tools.
+Nothing is posted.
+
 **Live progress and cost of each run.** Runs use `claude -p --output-format
 stream-json`. While a run is going, the studio shows its last steps above the
 review's details ("Opening …", "Reading …", the commands it runs). When it ends,
