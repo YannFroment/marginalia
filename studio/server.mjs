@@ -7,10 +7,11 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { watch } from 'node:fs';
 import { join, dirname, extname, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING } from '../lib/config.mjs';
+import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING, POST_DRY_RUN } from '../lib/config.mjs';
 import { TRIAGE_FILE_PREFIX } from '../lib/paths.mjs';
 import { loadPosted, savePosted } from '../lib/posted.mjs';
-import { postMergeRequestNote } from '../lib/gitlab.mjs';
+import { diffPositionFor, postDiffDiscussion, postMergeRequestNote } from '../lib/gitlab.mjs';
+import { parseAnchor } from '../lib/diff-position.mjs';
 import { loadSettings, saveSettings } from '../lib/settings.mjs';
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), 'dist');
@@ -129,7 +130,7 @@ async function listReviews() {
   items.sort((a, b) => b.reviewedAt.localeCompare(a.reviewedAt));
   // https://host/group/project, from any tracked MR url; used to link !123 and file paths.
   const projectUrl = (status?.mrs ?? []).map((mr) => mr.web_url?.match(/^(.*)\/-\/merge_requests\/\d+/)?.[1]).find(Boolean) ?? null;
-  return { status, items, projectUrl, settings: loadSettings(), allowPosting: ALLOW_POSTING === 'true', posted: await loadPosted() };
+  return { status, items, projectUrl, settings: loadSettings(), allowPosting: ALLOW_POSTING === 'true', postDryRun: POST_DRY_RUN === 'true', posted: await loadPosted() };
 }
 
 const clients = new Set();
@@ -211,8 +212,9 @@ async function putSettings(req, res) {
 // Serialized so two quick clicks can't both pass the "already posted" check.
 let postQueue = Promise.resolve();
 
-// Posts { slug, commentId, body } as a general comment on the MR tracked for
-// that review. The MR is resolved server-side from status.json, never taken
+// Posts { slug, commentId, body } on the MR tracked for that review, on a diff
+// line when the body starts with a `Line:` anchor, else as a general comment.
+// The MR is resolved server-side from status.json, never taken
 // from the request, so the client can't aim it at another MR.
 async function postComment(req, res) {
   if (ALLOW_POSTING !== 'true') return json(res, 403, { error: 'posting is disabled (ALLOW_POSTING=false)' });
@@ -232,9 +234,21 @@ async function postComment(req, res) {
     const posted = await loadPosted();
     const key = `${slug}:${commentId}`;
     if (posted[key]) return json(res, 409, { error: 'already posted', posted: posted[key] });
+    const anchor = parseAnchor(body);
     let note;
     try {
-      note = await postMergeRequestNote(mr.iid, body.trim());
+      const position = anchor && (await diffPositionFor(mr.iid, anchor));
+      const text = anchor ? anchor.body : body.trim();
+      if (POST_DRY_RUN === 'true') {
+        return json(res, 200, {
+          simulated: true,
+          iid: mr.iid,
+          request: position
+            ? { endpoint: `merge_requests/${mr.iid}/discussions`, body: text, position }
+            : { endpoint: `merge_requests/${mr.iid}/notes`, body: text },
+        });
+      }
+      note = position ? (await postDiffDiscussion(mr.iid, text, position)).notes[0] : await postMergeRequestNote(mr.iid, text);
     } catch (err) {
       return json(res, 502, { error: String(err.message).slice(0, 300) });
     }

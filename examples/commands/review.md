@@ -16,6 +16,7 @@ Write the final review in this shape (the bot's studio reads it):
 ### Critical
 - <blocking issue, or "None">
 **Comment to post:**
+> **Line:** `<file path>:<line in the new version>`
 > <short factual comment, ready to paste in GitLab>
 
 ### Important
@@ -24,5 +25,7 @@ Write the final review in this shape (the bot's studio reads it):
 ### Suggestions
 - <optional>
 ```
+
+The `**Line:**` first line anchors the comment on that line of the MR diff; pick a line the diff shows (added or context), or drop it for a general comment.
 
 Deliver it as the bot's run instructions say (report file, or `<<<REVIEW_FILE>>>` block). Outside the bot, write it to `.claude/reviews/<branch-slug>.md`. Never post anything to GitLab.

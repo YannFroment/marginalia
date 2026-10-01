@@ -112,15 +112,19 @@ const writeEdit = (key: string, value: string | null) => {
 
 interface PostContextValue {
   allowPosting: boolean;
+  postDryRun: boolean;
   slug: string | null;
   iid: string | number | null;
   posted: Record<string, PostedInfo>;
   reload: () => void;
 }
-const PostContext = createContext<PostContextValue>({ allowPosting: false, slug: null, iid: null, posted: {}, reload: () => {} });
+const PostContext = createContext<PostContextValue>({ allowPosting: false, postDryRun: false, slug: null, iid: null, posted: {}, reload: () => {} });
 
 // Nothing is sent until "Post comment" is clicked here, with the final text.
-function ConfirmPost({ iid, text, onCancel, onConfirm, fallbackRef }: { iid: string | number; text: string; onCancel: () => void; onConfirm: () => Promise<void>; fallbackRef: RefObject<HTMLElement | null> }) {
+// Display only: the server re-reads the anchor and checks it against the diff.
+const anchorOf = (text: string) => /^\s*\**Line:?\**:?\s*`?([^\s`]+?:\d+)`?/.exec(text)?.[1] ?? null;
+
+function ConfirmPost({ iid, text, dryRun, onCancel, onConfirm, fallbackRef }: { iid: string | number; text: string; dryRun: boolean; onCancel: () => void; onConfirm: () => Promise<void>; fallbackRef: RefObject<HTMLElement | null> }) {
   const [busy, setBusy] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   useScrollLock(true);
@@ -135,7 +139,10 @@ function ConfirmPost({ iid, text, onCancel, onConfirm, fallbackRef }: { iid: str
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={busy ? undefined : onCancel}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="confirm-post-title" aria-describedby="confirm-post-text" className="w-full max-w-lg rounded-xl border border-zinc-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900" onClick={(e) => e.stopPropagation()}>
         <h2 id="confirm-post-title" className="text-base font-semibold">Post this comment on !{iid}?</h2>
-        <p className="mt-1 text-sm text-fg-muted">It will be posted on GitLab under your account and visible to the MR author.</p>
+        <p className="mt-1 text-sm text-fg-muted">
+          {dryRun ? 'Dry run: nothing will be sent to GitLab.' : 'It will be posted on GitLab under your account and visible to the MR author.'}{' '}
+          {anchorOf(text) ? <>On line <code>{anchorOf(text)}</code> of the diff.</> : 'As a general comment on the MR.'}
+        </p>
         <pre id="confirm-post-text" tabIndex={0} aria-label="Comment text" className="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm dark:border-zinc-800 dark:bg-zinc-950">{text}</pre>
         <div className="mt-4 flex justify-end gap-2">
           <button data-autofocus disabled={busy} onClick={onCancel} className="touch-target rounded-lg border border-zinc-200 px-3 py-1.5 text-sm hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Cancel</button>
@@ -245,11 +252,18 @@ function Quote({ children }: { children?: ReactNode }) {
         <ConfirmPost
           iid={post.iid}
           text={current}
+          dryRun={post.postDryRun}
           fallbackRef={rootRef}
           onCancel={() => setConfirming(false)}
           onConfirm={async () => {
             const posted = await postComment(post.slug!, commentId, current);
             setConfirming(false);
+            if ('simulated' in posted) {
+              const where = posted.request.position ? `${posted.request.position.new_path}:${posted.request.position.new_line}` : 'the MR (general comment)';
+              console.info('[marginalia] dry run, nothing posted:', posted.request);
+              toast.info(`Dry run: would post on ${where} of !${posted.iid}`);
+              return;
+            }
             post.reload();
             toast.success(`Comment posted on !${post.iid}`, { action: { label: 'Open', onClick: () => window.open(posted.url, '_blank', 'noopener') } });
           }}
@@ -321,8 +335,8 @@ function Md({ children, semantic }: { children: string; semantic: boolean }) {
   );
 }
 
-export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted, reload }: { item: ReviewItem | undefined; markdown: string | null; projectUrl: string | null; allowPosting: boolean; posted: Record<string, PostedInfo>; reload: () => void }) {
-  const postCtx = useMemo(() => ({ allowPosting, slug: item?.slug ?? null, iid: item?.tracked ? item.iid : null, posted, reload }), [allowPosting, item?.slug, item?.tracked, item?.iid, posted, reload]);
+export function ReviewReader({ item, markdown, projectUrl, allowPosting, postDryRun, posted, reload }: { item: ReviewItem | undefined; markdown: string | null; projectUrl: string | null; allowPosting: boolean; postDryRun: boolean; posted: Record<string, PostedInfo>; reload: () => void }) {
+  const postCtx = useMemo(() => ({ allowPosting, postDryRun, slug: item?.slug ?? null, iid: item?.tracked ? item.iid : null, posted, reload }), [allowPosting, postDryRun, item?.slug, item?.tracked, item?.iid, posted, reload]);
   const linkCtx = useMemo(() => ({ projectUrl, branch: item?.branch ?? null }), [projectUrl, item?.branch]);
   const { intro, sections } = useMemo(() => splitSections(markdown ?? ''), [markdown]);
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});

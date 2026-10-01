@@ -41,6 +41,7 @@ interface ReviewsPayload {
   projectUrl: string | null;
   settings: { pollIntervalMinutes: number };
   allowPosting: boolean;
+  postDryRun?: boolean;
   posted: Record<string, PostedInfo>;
 }
 
@@ -116,7 +117,13 @@ export async function setPollInterval(minutes: number): Promise<void> {
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
 }
 
-export async function postComment(slug: string, commentId: string, body: string): Promise<PostedInfo> {
+export interface SimulatedPost {
+  simulated: true;
+  iid: number;
+  request: { endpoint: string; body: string; position?: { new_path: string; new_line: number; old_line?: number } };
+}
+
+export async function postComment(slug: string, commentId: string, body: string): Promise<PostedInfo | SimulatedPost> {
   const res = await fetch('/api/post', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

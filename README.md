@@ -48,7 +48,9 @@ A tool refused in headless mode fails the run with a message pointing at
 **Studio format (optional).** The studio works with any markdown. It shows
 richer cards if the report has `**Verdict:** APPROVE|REQUEST CHANGES`,
 `### Critical` / `### Important` bullet sections, an `**Overview:**` line and
-`**Comment to post:**` blockquotes (see `examples/commands/review.md`). Without
+`**Comment to post:**` blockquotes (see `examples/commands/review.md`). A blockquote that starts with
+`**Line:** \`path/to/file:42\`` is posted on that line of the MR diff; without
+it, it's a general MR comment. Without
 them, reviews are listed as "Unrated".
 
 ## Requirements
@@ -187,6 +189,16 @@ server-side from `status.json`, never from the request. Posted comments are
 remembered in `posted.json` (gitignored) so the same one can't be posted twice,
 and shown with a "Posted" badge linking to the note. Off by default: without
 the flag the button doesn't exist and `POST /api/post` answers 403.
+
+**Anchored comments.** When the comment starts with a `**Line:**` anchor, the
+server checks the line against the MR's latest diff version and posts a diff
+discussion on it (an added line, or a context line shown in the diff). A line
+outside the diff is refused with its reason instead of falling back to a general
+comment.
+
+**Dry run.** With `POST_DRY_RUN=true` as well, the button resolves the MR and the
+diff position, then returns the request it would send without calling GitLab;
+the studio shows where the comment would land.
 
 The "Review ready" notification and the SwiftBar menu open the studio (the
 notification falls back to VS Code if the studio isn't listening).

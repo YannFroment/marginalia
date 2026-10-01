@@ -211,7 +211,7 @@ export function App() {
         <main className="min-w-0 flex-1">
       {slug ? (
         <Suspense fallback={<p className="px-6 py-6 text-fg-muted">Loading…</p>}>
-        <ReviewReader item={current} markdown={markdown} projectUrl={data?.projectUrl ?? null} allowPosting={data?.allowPosting ?? false} posted={data?.posted ?? EMPTY_POSTED} reload={reload} />
+        <ReviewReader item={current} markdown={markdown} projectUrl={data?.projectUrl ?? null} allowPosting={data?.allowPosting ?? false} postDryRun={data?.postDryRun ?? false} posted={data?.posted ?? EMPTY_POSTED} reload={reload} />
         </Suspense>
       ) : (
         <div className="mx-auto max-w-7xl px-6 py-8">
