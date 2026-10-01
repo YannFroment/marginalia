@@ -33,6 +33,8 @@ export interface PostedInfo {
   at: string;
   iid: number;
   url: string;
+  // false: GitLab refused the line anchor, so it went up as a general comment.
+  inline?: boolean;
 }
 
 interface ReviewsPayload {
@@ -116,11 +118,11 @@ export async function setPollInterval(minutes: number): Promise<void> {
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
 }
 
-export async function postComment(slug: string, commentId: string, body: string): Promise<PostedInfo> {
+export async function postComment(slug: string, commentId: string, body: string, target?: { path: string; line?: number }): Promise<PostedInfo> {
   const res = await fetch('/api/post', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ slug, commentId, body }),
+    body: JSON.stringify({ slug, commentId, body, ...target }),
   });
   const j = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);

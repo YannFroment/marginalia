@@ -21,7 +21,7 @@ import { Check, ChevronRight, Copy, ExternalLink, Loader2, PanelRight, Pencil, S
 import { postComment, type PostedInfo, type ReviewItem } from '../lib/api';
 import { cn, timeAgo } from '../lib/utils';
 import { VerdictBadge } from './VerdictBadge';
-import { LinkContext, linkify, linkifyCode, type LinkContextValue } from '../lib/links';
+import { LinkContext, commentLocation, linkify, linkifyCode, type LinkContextValue } from '../lib/links';
 
 interface Section {
   id: string;
@@ -116,11 +116,12 @@ interface PostContextValue {
   iid: string | number | null;
   posted: Record<string, PostedInfo>;
   reload: () => void;
+  markdown: string;
 }
-const PostContext = createContext<PostContextValue>({ allowPosting: false, slug: null, iid: null, posted: {}, reload: () => {} });
+const PostContext = createContext<PostContextValue>({ allowPosting: false, slug: null, iid: null, posted: {}, reload: () => {}, markdown: '' });
 
 // Nothing is sent until "Post comment" is clicked here, with the final text.
-function ConfirmPost({ iid, text, onCancel, onConfirm, fallbackRef }: { iid: string | number; text: string; onCancel: () => void; onConfirm: () => Promise<void>; fallbackRef: RefObject<HTMLElement | null> }) {
+function ConfirmPost({ iid, text, target, onCancel, onConfirm, fallbackRef }: { iid: string | number; text: string; target: { path: string; line?: number } | null; onCancel: () => void; onConfirm: () => Promise<void>; fallbackRef: RefObject<HTMLElement | null> }) {
   const [busy, setBusy] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   useScrollLock(true);
@@ -136,6 +137,9 @@ function ConfirmPost({ iid, text, onCancel, onConfirm, fallbackRef }: { iid: str
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="confirm-post-title" aria-describedby="confirm-post-text" className="w-full max-w-lg rounded-xl border border-zinc-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900" onClick={(e) => e.stopPropagation()}>
         <h2 id="confirm-post-title" className="text-base font-semibold">Post this comment on !{iid}?</h2>
         <p className="mt-1 text-sm text-fg-muted">It will be posted on GitLab under your account and visible to the MR author.</p>
+        <p className="mt-1 text-sm text-fg-muted">
+          {target ? <>Anchored on <code className="rounded bg-zinc-100 px-1 py-0.5 text-[0.85em] dark:bg-zinc-800">{target.path}{target.line ? `:${target.line}` : ''}</code> in the diff{target.line ? '' : ' (whole file)'}.</> : 'No file found above it: it will be a general comment.'}
+        </p>
         <pre id="confirm-post-text" tabIndex={0} aria-label="Comment text" className="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm dark:border-zinc-800 dark:bg-zinc-950">{text}</pre>
         <div className="mt-4 flex justify-end gap-2">
           <button data-autofocus disabled={busy} onClick={onCancel} className="touch-target rounded-lg border border-zinc-200 px-3 py-1.5 text-sm hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Cancel</button>
@@ -162,7 +166,7 @@ function ConfirmPost({ iid, text, onCancel, onConfirm, fallbackRef }: { iid: str
 
 // The "**Comment to post:**" blockquotes are meant to be pasted into GitLab:
 // copy as is, or edit first in a textarea (the edit is kept locally).
-function Quote({ children }: { children?: ReactNode }) {
+function Quote({ children, offset }: { children?: ReactNode; offset?: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const [original, setOriginal] = useState(() => textOf(children).trim());
   const key = editKey(original);
@@ -173,6 +177,12 @@ function Quote({ children }: { children?: ReactNode }) {
   const commentId = key.split(':').pop() ?? '';
   const postedInfo = post.slug ? post.posted[`${post.slug}:${commentId}`] : undefined;
   const [confirming, setConfirming] = useState(false);
+  // The file:line the review mentions just above this comment, since the last heading.
+  const target = useMemo(() => {
+    if (offset === undefined) return null;
+    const above = post.markdown.slice(0, offset);
+    return commentLocation(above.slice(Math.max(above.lastIndexOf('\n#'), 0)));
+  }, [post.markdown, offset]);
   // Focus lands here if the button that opened the dialog is gone (a posted comment replaces it).
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -245,13 +255,15 @@ function Quote({ children }: { children?: ReactNode }) {
         <ConfirmPost
           iid={post.iid}
           text={current}
+          target={target}
           fallbackRef={rootRef}
           onCancel={() => setConfirming(false)}
           onConfirm={async () => {
-            const posted = await postComment(post.slug!, commentId, current);
+            const posted = await postComment(post.slug!, commentId, current, target ?? undefined);
             setConfirming(false);
             post.reload();
-            toast.success(`Comment posted on !${post.iid}`, { action: { label: 'Open', onClick: () => window.open(posted.url, '_blank', 'noopener') } });
+            if (target && posted.inline === false) toast.warning('Could not anchor it to the diff, posted as a general comment');
+            toast.success(posted.inline ? `Comment posted on ${target?.path}${target?.line ? `:${target.line}` : ''}` : `Comment posted on !${post.iid}`, { action: { label: 'Open', onClick: () => window.open(posted.url, '_blank', 'noopener') } });
           }}
         />
       )}
@@ -302,7 +314,7 @@ function makeComponents(semantic: boolean, ctx: LinkContextValue): Components {
       const code = createElement('code', { className }, children);
       return url ? <a href={url} target="_blank" rel="noreferrer" className="no-underline hover:underline">{code}</a> : code;
     },
-    blockquote: ({ children }) => <Quote>{children}</Quote>,
+    blockquote: ({ node, children }) => <Quote offset={node?.position?.start.offset}>{children}</Quote>,
     a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer">{children}</a>,
     pre: ({ children }) => <pre className="overflow-x-auto rounded-lg border border-zinc-200 bg-zinc-100 p-3 text-[13px] dark:border-zinc-800 dark:bg-zinc-900">{children}</pre>,
     table: ({ children }) => <div className="overflow-x-auto"><table>{children}</table></div>,
@@ -322,8 +334,8 @@ function Md({ children, semantic }: { children: string; semantic: boolean }) {
 }
 
 export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted, reload }: { item: ReviewItem | undefined; markdown: string | null; projectUrl: string | null; allowPosting: boolean; posted: Record<string, PostedInfo>; reload: () => void }) {
-  const postCtx = useMemo(() => ({ allowPosting, slug: item?.slug ?? null, iid: item?.tracked ? item.iid : null, posted, reload }), [allowPosting, item?.slug, item?.tracked, item?.iid, posted, reload]);
-  const linkCtx = useMemo(() => ({ projectUrl, branch: item?.branch ?? null }), [projectUrl, item?.branch]);
+  const postCtx = useMemo(() => ({ allowPosting, slug: item?.slug ?? null, iid: item?.tracked ? item.iid : null, posted, reload, markdown: markdown ?? '' }), [allowPosting, item?.slug, item?.tracked, item?.iid, posted, reload, markdown]);
+  const linkCtx = useMemo(() => ({ projectUrl, branch: item?.branch ?? null, mrWebUrl: item?.webUrl ?? null }), [projectUrl, item?.branch, item?.webUrl]);
   const { intro, sections } = useMemo(() => splitSections(markdown ?? ''), [markdown]);
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const isOpen = (s: Section) => overrides[s.id] ?? OPEN_BY_DEFAULT.test(s.title);

@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING } from '../lib/config.mjs';
 import { TRIAGE_FILE_PREFIX } from '../lib/paths.mjs';
 import { loadPosted, savePosted } from '../lib/posted.mjs';
-import { postMergeRequestNote } from '../lib/gitlab.mjs';
+import { postMergeRequestNote, postMergeRequestInlineNote } from '../lib/gitlab.mjs';
 import { loadSettings, saveSettings } from '../lib/settings.mjs';
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), 'dist');
@@ -211,19 +211,24 @@ async function putSettings(req, res) {
 // Serialized so two quick clicks can't both pass the "already posted" check.
 let postQueue = Promise.resolve();
 
-// Posts { slug, commentId, body } as a general comment on the MR tracked for
-// that review. The MR is resolved server-side from status.json, never taken
+// Posts { slug, commentId, body, path?, line? } on the MR tracked for that
+// review: inline on path:line when given, else (or if GitLab refuses the
+// anchor) as a general comment. The MR is resolved server-side from status.json, never taken
 // from the request, so the client can't aim it at another MR.
 async function postComment(req, res) {
   if (ALLOW_POSTING !== 'true') return json(res, 403, { error: 'posting is disabled (ALLOW_POSTING=false)' });
   const input = await readJsonBody(req, res);
   if (input === null) return undefined;
-  const { slug, commentId, body } = input;
+  const { slug, commentId, body, path, line } = input;
   if (typeof slug !== 'string' || !SLUG_RE.test(slug) || typeof commentId !== 'string' || !/^[\w-]{1,64}$/.test(commentId)) {
     return json(res, 400, { error: 'bad slug or commentId' });
   }
   if (typeof body !== 'string' || !body.trim() || body.length > 10_000) {
     return json(res, 400, { error: 'body must be a non-empty string under 10000 characters' });
+  }
+  const hasTarget = path !== undefined || line !== undefined;
+  if (hasTarget && (typeof path !== 'string' || !path || path.length > 500 || path.includes('\0') || (line !== undefined && (!Number.isInteger(line) || line < 1)))) {
+    return json(res, 400, { error: 'bad path or line' });
   }
   const run = postQueue.then(async () => {
     const status = await readStatus();
@@ -232,13 +237,27 @@ async function postComment(req, res) {
     const posted = await loadPosted();
     const key = `${slug}:${commentId}`;
     if (posted[key]) return json(res, 409, { error: 'already posted', posted: posted[key] });
-    let note;
+    let noteId;
+    let inline = false;
     try {
-      note = await postMergeRequestNote(mr.iid, body.trim());
+      if (hasTarget) {
+        try {
+          const discussion = await postMergeRequestInlineNote(mr.iid, body.trim(), path, line);
+          noteId = discussion.notes?.[0]?.id;
+          inline = true;
+        } catch (err) {
+          // Typically a line outside the diff (400): keep the comment, drop the anchor.
+          console.warn(`[studio] inline post on ${path}${line ? `:${line}` : ''} failed, posting a general note: ${String(err.message).slice(0, 200)}`);
+        }
+      }
+      if (!inline) {
+        const text = hasTarget ? `\`${path}${line ? `:${line}` : ''}\`\n\n${body.trim()}` : body.trim();
+        noteId = (await postMergeRequestNote(mr.iid, text)).id;
+      }
     } catch (err) {
       return json(res, 502, { error: String(err.message).slice(0, 300) });
     }
-    posted[key] = { at: new Date().toISOString(), iid: mr.iid, url: `${mr.web_url}#note_${note.id}` };
+    posted[key] = { at: new Date().toISOString(), iid: mr.iid, url: `${mr.web_url}#note_${noteId}`, inline: hasTarget ? inline : undefined };
     await savePosted(posted);
     broadcast();
     return json(res, 200, posted[key]);
