@@ -109,7 +109,10 @@ has changed since the last pass (new commit, or MR never seen before).
   checkout so the command/agent/settings/connectors are available in it).
   Before each review/triage, checks out the MR's branch there — skipping the
   MR instead of forcing it if that branch happens to be checked out somewhere
-  else (e.g. your own working copy).
+  else (e.g. your own working copy). If you keep a worktree open per MR, set
+  `BOT_CHECKOUT=detached`: the bot then checks out the MR's head without any
+  local branch, so it never skips and never moves one of your branches
+  (triage fixes still land on `marginalia/<branch-slug>`).
 
 ### Stacked MRs
 
