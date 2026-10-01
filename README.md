@@ -48,7 +48,7 @@ A tool refused in headless mode fails the run with a message pointing at
 **Studio format (optional).** The studio works with any markdown. It shows
 richer cards if the report has `**Verdict:** APPROVE|REQUEST CHANGES`,
 `### Critical` / `### Important` bullet sections, an `**Overview:**` line and
-`**Comment to post:**` blockquotes (see `examples/commands/review.md`). Without
+`**Comment to post:**` blockquotes (see `examples/commands/review.md`). The first `path[:line]` of the bullet above a comment is where *Post to GitLab* anchors it in the diff. Without
 them, reviews are listed as "Unrated".
 
 ## Requirements

@@ -14,7 +14,7 @@ Write the final review in this shape (the bot's studio reads it):
 **Overview:** <one or two sentences>
 
 ### Critical
-- <blocking issue, or "None">
+- `<path/to/file.ext:line>` <blocking issue, or "None">
 **Comment to post:**
 > <short factual comment, ready to paste in GitLab>
 
@@ -24,5 +24,7 @@ Write the final review in this shape (the bot's studio reads it):
 ### Suggestions
 - <optional>
 ```
+
+Start each issue bullet that has a `**Comment to post:**` with the repo-relative path and the line of the new file version it is about, in backticks (`` `src/foo.ts:42` ``): the studio posts the comment on that line of the MR diff. Use a line that the MR changed; without one the comment attaches to the whole file.
 
 Deliver it as the bot's run instructions say (report file, or `<<<REVIEW_FILE>>>` block). Outside the bot, write it to `.claude/reviews/<branch-slug>.md`. Never post anything to GitLab.
