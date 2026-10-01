@@ -19,3 +19,7 @@ test('deep review runs are pointed at the automatic report', () => {
   assert.match(contractPrompt('deepen', '', '/wt', '/reviews/a.md'), /automatic review of this MR is at \/reviews\/a\.md/);
   assert.doesNotMatch(contractPrompt('review', '', '/wt', '/reviews/a.md'), /automatic review/);
 });
+
+test('QA runs deliver only their section', () => {
+  assert.match(contractPrompt('qa', '', '/wt', '/reviews/a.md'), /review of this MR is at \/reviews\/a\.md\. Deliver only its QA section, starting with "## QA"/);
+});

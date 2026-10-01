@@ -8,7 +8,7 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { watch } from 'node:fs';
 import { join, dirname, extname, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING, DEEPEN_COMMAND } from '../lib/config.mjs';
+import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING, DEEPEN_COMMAND, QA_COMMAND } from '../lib/config.mjs';
 import { TRIAGE_FILE_PREFIX } from '../lib/paths.mjs';
 import { loadPosted, savePosted } from '../lib/posted.mjs';
 import { postMergeRequestNote, postMergeRequestInlineNote, mergeRequestNoteExists } from '../lib/gitlab.mjs';
@@ -182,12 +182,13 @@ async function listReviews() {
       reviewedAt: mr?.reviewedAt ?? st.mtime.toISOString(),
       tracked: Boolean(mr),
       lastDeepAt: (mr && lastRuns[mr.iid]?.deepen) ?? null,
+      lastQaAt: (mr && lastRuns[mr.iid]?.qa) ?? null,
     };
   }));
   items.sort((a, b) => b.reviewedAt.localeCompare(a.reviewedAt));
   // https://host/group/project, from any tracked MR url; used to link !123 and file paths.
   const projectUrl = (status?.mrs ?? []).map((mr) => mr.web_url?.match(/^(.*)\/-\/merge_requests\/\d+/)?.[1]).find(Boolean) ?? null;
-  return { status, items, stacks: buildStacks(status), projectUrl, settings: loadSettings(), allowPosting: ALLOW_POSTING === 'true', deepenEnabled: actionEnabled('deepen'), posted: await loadPosted() };
+  return { status, items, stacks: buildStacks(status), projectUrl, settings: loadSettings(), allowPosting: ALLOW_POSTING === 'true', deepenEnabled: actionEnabled('deepen'), qaEnabled: actionEnabled('qa'), posted: await loadPosted() };
 }
 
 const clients = new Set();
@@ -271,10 +272,10 @@ let actionHandler = null;
 export function setActionHandler(fn) {
   actionHandler = fn;
 }
-const ACTION_COMMANDS = { deepen: DEEPEN_COMMAND };
+const ACTION_COMMANDS = { deepen: DEEPEN_COMMAND, qa: QA_COMMAND };
 const actionEnabled = (kind) => Boolean(ACTION_COMMANDS[kind] && actionHandler);
 
-// Queues an on-demand run ("deepen") on the MR tracked for that
+// Queues an on-demand run ("deepen" or "qa") on the MR tracked for that
 // review. Nothing is posted: the result lands in the review file.
 async function runAction(req, res) {
   const input = await readJsonBody(req, res);

@@ -57,8 +57,8 @@ if (cfg.REPO_LOCAL_PATH) {
   });
   const dirs = [join(cfg.REPO_LOCAL_PATH, '.claude'), join(homedir(), '.claude')];
   const findCommand = (cmd) => dirs.some((d) => existsSync(join(d, 'commands', `${cmd.replace(/^\//, '')}.md`)) || existsSync(join(d, 'skills', cmd.replace(/^\//, ''), 'SKILL.md')));
-  for (const [label, cmd] of [['REVIEW_COMMAND', cfg.REVIEW_COMMAND], ['TRIAGE_COMMAND', cfg.TRIAGE_COMMAND], ['DEEPEN_COMMAND', cfg.DEEPEN_COMMAND]]) {
-    if (!cmd && label === 'DEEPEN_COMMAND') continue;
+  for (const [label, cmd] of [['REVIEW_COMMAND', cfg.REVIEW_COMMAND], ['TRIAGE_COMMAND', cfg.TRIAGE_COMMAND], ['DEEPEN_COMMAND', cfg.DEEPEN_COMMAND], ['QA_COMMAND', cfg.QA_COMMAND]]) {
+    if (!cmd && (label === 'DEEPEN_COMMAND' || label === 'QA_COMMAND')) continue;
     if (!cmd) { label === 'TRIAGE_COMMAND' ? warnMsg('TRIAGE_COMMAND empty: your own MRs are ignored') : bad('REVIEW_COMMAND is empty'); continue; }
     findCommand(cmd) ? ok(`${label} ${cmd} found`) : bad(`${label} ${cmd} not found in <repo>/.claude or ~/.claude`, 'copy one from examples/commands or fix the name (plugin commands are not detected here: use --dry-run)');
   }
