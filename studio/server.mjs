@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING } from '../lib/config.mjs';
 import { TRIAGE_FILE_PREFIX } from '../lib/paths.mjs';
 import { loadPosted, savePosted } from '../lib/posted.mjs';
-import { postMergeRequestNote, postMergeRequestInlineNote } from '../lib/gitlab.mjs';
+import { postMergeRequestNote, postMergeRequestInlineNote, mergeRequestNoteExists } from '../lib/gitlab.mjs';
 import { loadSettings, saveSettings } from '../lib/settings.mjs';
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), 'dist');
@@ -93,7 +93,36 @@ function kindOf(slug) {
   return 'review';
 }
 
+// Forgets posted comments that were deleted on GitLab, so they can be posted
+// again and lose their "Posted" badge. Throttled (the client polls every 30 s),
+// serialized with posting, and a failed check never drops anything.
+let lastReconcile = 0;
+async function reconcilePosted() {
+  if (ALLOW_POSTING !== 'true' || Date.now() - lastReconcile < 15_000) return;
+  lastReconcile = Date.now();
+  const run = postQueue.then(async () => {
+    const posted = await loadPosted();
+    let changed = false;
+    for (const [key, info] of Object.entries(posted)) {
+      const noteId = info.url?.match(/#note_(\d+)$/)?.[1];
+      if (!noteId || !info.iid) continue;
+      try {
+        if (!(await mergeRequestNoteExists(info.iid, noteId))) {
+          delete posted[key];
+          changed = true;
+        }
+      } catch {
+        /* GitLab unreachable: keep it for now */
+      }
+    }
+    if (changed) await savePosted(posted);
+  });
+  postQueue = run.catch(() => {});
+  await run.catch(() => {});
+}
+
 async function listReviews() {
+  await reconcilePosted();
   const status = await readStatus();
   const byPath = new Map((status?.mrs ?? []).map((mr) => [mr.reviewPath, mr]));
   let names = [];
