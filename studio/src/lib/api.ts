@@ -83,6 +83,7 @@ interface ReviewsPayload {
   settings: { pollIntervalMinutes: number };
   allowPosting: boolean;
   postDryRun?: boolean;
+  jiraUrl?: string | null;
   deepenEnabled?: boolean;
   qaEnabled?: boolean;
   ideEnabled?: boolean;

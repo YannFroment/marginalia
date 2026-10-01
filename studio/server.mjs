@@ -8,7 +8,7 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { watch } from 'node:fs';
 import { join, dirname, extname, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING, POST_DRY_RUN, DEEPEN_COMMAND, QA_COMMAND, BOT_WORKTREE_DIR, CLAUDE_BIN, CLAUDE_ALLOWED_TOOLS, IDE_COMMAND, IDE_FOLDER_COMMAND, encodedProjectId } from '../lib/config.mjs';
+import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING, POST_DRY_RUN, DEEPEN_COMMAND, QA_COMMAND, BOT_WORKTREE_DIR, CLAUDE_BIN, CLAUDE_ALLOWED_TOOLS, IDE_COMMAND, IDE_FOLDER_COMMAND, encodedProjectId, JIRA_BASE_URL } from '../lib/config.mjs';
 import { TRIAGE_FILE_PREFIX, fileExists } from '../lib/paths.mjs';
 import { loadPosted, savePosted } from '../lib/posted.mjs';
 import { postMergeRequestNote, postMergeRequestInlineNote, mergeRequestNoteExists, gitlabRequest } from '../lib/gitlab.mjs';
@@ -199,7 +199,7 @@ async function listReviews() {
   items.sort(byPriorityThenDate);
   // https://host/group/project, from any tracked MR url; used to link !123 and file paths.
   const projectUrl = (status?.mrs ?? []).map((mr) => mr.web_url?.match(/^(.*)\/-\/merge_requests\/\d+/)?.[1]).find(Boolean) ?? null;
-  return { status, items, stacks: buildStacks(status), projectUrl, settings: loadSettings(), allowPosting: ALLOW_POSTING === 'true', ideEnabled: Boolean(IDE_COMMAND.trim()), diffInIdeEnabled: perMrWorktrees && Boolean(IDE_FOLDER_COMMAND.trim()), postDryRun: POST_DRY_RUN === 'true', deepenEnabled: actionEnabled('deepen'), qaEnabled: actionEnabled('qa'), posted: await loadPosted() };
+  return { status, items, stacks: buildStacks(status), projectUrl, settings: loadSettings(), allowPosting: ALLOW_POSTING === 'true', jiraUrl: JIRA_BASE_URL.replace(/\/+$/, '') || null, ideEnabled: Boolean(IDE_COMMAND.trim()), diffInIdeEnabled: perMrWorktrees && Boolean(IDE_FOLDER_COMMAND.trim()), postDryRun: POST_DRY_RUN === 'true', deepenEnabled: actionEnabled('deepen'), qaEnabled: actionEnabled('qa'), posted: await loadPosted() };
 }
 
 const clients = new Set();

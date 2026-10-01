@@ -283,7 +283,7 @@ export function App() {
             <div className="mt-16 flex flex-col items-center gap-2 text-fg-muted"><Inbox className="size-8" />No reviews match this filter.</div>
           ) : size === 'list' ? (
             <ul className="mt-6 divide-y divide-zinc-200 overflow-hidden rounded-xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-              {ordered.map((i) => <ReviewRow key={i.slug} item={i} unread={isUnread(i)} />)}
+              {ordered.map((i) => <ReviewRow key={i.slug} item={i} unread={isUnread(i)} jiraUrl={data?.jiraUrl ?? null} />)}
             </ul>
           ) : (
             <div className={cn('mt-6 grid', size === 'small' ? 'gap-3' : 'gap-4', GRID[size])}>
