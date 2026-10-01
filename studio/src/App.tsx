@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { MotionConfig } from 'motion/react';
+import { MotionConfig, motion } from 'motion/react';
 import { Inbox, LayoutGrid, Grid3x3, Rows3 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { loadSeen, saveSeen, useMarkdown, useReviews, type ReviewItem } from './lib/api';
@@ -60,7 +60,15 @@ export function App() {
   // Tucked away by default: the tabs are the working set, the sidebar is history.
   const [sidebarPref, setSidebarOpen] = usePersistentState('mr-review-viewer:sidebar-open', false);
 
+  // True for the length of the resize animation, so only then do cards scale.
+  const [resizing, setResizing] = useState(false);
+  const resizeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(resizeTimer.current), []);
+
   const setSize = (next: CardSize) => {
+    setResizing(true);
+    clearTimeout(resizeTimer.current);
+    resizeTimer.current = setTimeout(() => setResizing(false), 600);
     setSizeState(next);
     try {
       localStorage.setItem(SIZE_KEY, next);
@@ -174,6 +182,12 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, tab, filter, seen]);
 
+  // Unread first, then already-read, each under a heading so a long queue
+  // shows at a glance what still needs a look. Stable sort keeps the API order.
+  const ordered = useMemo(() => [...visible.filter(isUnread), ...visible.filter((i) => !isUnread(i))], [visible, seen]);
+  const unreadVisible = ordered.filter(isUnread).length;
+  const sectioned = unreadVisible > 0 && unreadVisible < ordered.length;
+
   const unreadCount = items.filter((i) => i.kind !== 'retro' && isUnread(i)).length;
 
   // Counters follow the selected tab (Reviews / Triage).
@@ -255,7 +269,16 @@ export function App() {
             <div className="mt-16 flex flex-col items-center gap-2 text-fg-muted"><Inbox className="size-8" />No reviews match this filter.</div>
           ) : (
             <div className={cn('mt-6 grid', size === 'small' ? 'gap-3' : 'gap-4', GRID[size])}>
-              {visible.map((i) => <ReviewCard key={i.slug} item={i} unread={isUnread(i)} size={size} />)}
+                {ordered.flatMap((i, idx) => [
+                  ...(sectioned && (idx === 0 || idx === unreadVisible)
+                    ? [
+                        <motion.h2 key={idx === 0 ? 'h-unread' : 'h-read'} layout="position" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={cn('col-span-full text-xs font-medium uppercase tracking-wide text-fg-muted', idx !== 0 && 'mt-4')}>
+                          {idx === 0 ? `To review · ${unreadVisible}` : `Already read · ${ordered.length - unreadVisible}`}
+                        </motion.h2>,
+                      ]
+                    : []),
+                  <ReviewCard key={i.slug} item={i} unread={isUnread(i)} size={size} resizing={resizing} />,
+                ])}
             </div>
           )}
         </div>

@@ -20,22 +20,32 @@ const reveal = {
   exit: { opacity: 0, transition: { duration: 0.1 } },
 } as const;
 
-export function ReviewCard({ item, unread, size }: { item: ReviewItem; unread: boolean; size: CardSize }) {
+// `resizing` is true only while the card size is changing: that is the one case
+// where the box itself must scale. For filtering (cards reflowing, entering,
+// leaving) only the position animates, so spamming a filter can't leave a card
+// stretched or squashed by an interrupted scale animation.
+export function ReviewCard({ item, unread, size, resizing }: { item: ReviewItem; unread: boolean; size: CardSize; resizing: boolean }) {
   const small = size === 'small';
   const large = size === 'large';
   return (
     <motion.a
-      layout
+      layout={resizing ? true : 'position'}
       transition={LAYOUT}
+      initial={{ opacity: 0, scale: 0.96 }}
+      animate={{ opacity: 1, scale: 1 }}
       href={`#/${item.slug}`}
       // Set through style so the radius is corrected while the box scales.
       style={{ borderRadius: 12 }}
       className={cn(
-        'group relative flex flex-col overflow-hidden border border-zinc-200 bg-white transition-colors hover:border-zinc-300 hover:shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700',
+        'group relative flex flex-col overflow-hidden border bg-white transition-colors hover:shadow-sm dark:bg-zinc-900',
+        // Unread: blue edge, full-contrast title. Read: quiet card, muted title.
+        unread
+          ? 'border-blue-500/40 hover:border-blue-500/70 dark:border-blue-400/40 dark:hover:border-blue-400/70'
+          : 'border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700',
         small ? 'gap-1.5 p-3' : 'gap-3 p-4',
       )}
     >
-      {unread && <span className={cn('absolute size-2 rounded-full bg-blue-500', small ? 'right-2.5 top-2.5' : 'right-3 top-3')} aria-hidden />}
+      {unread && <span className={cn('absolute size-2 rounded-full bg-blue-500 ring-4 ring-blue-500/20', small ? 'right-2.5 top-2.5' : 'right-3 top-3')} aria-hidden />}
 
       <motion.div layout="position" transition={LAYOUT} className="flex items-center gap-2 text-xs text-fg-muted">
         {item.iid && <span className="font-mono">!{item.iid}</span>}
@@ -43,7 +53,7 @@ export function ReviewCard({ item, unread, size }: { item: ReviewItem; unread: b
         <span>{timeAgo(item.reviewedAt)}</span>
       </motion.div>
 
-      <motion.h2 layout="position" transition={LAYOUT} className={cn('font-medium leading-snug', small ? 'line-clamp-2 text-xs' : large ? 'text-base' : 'line-clamp-2 text-sm')}>{item.title}{unread && <span className="sr-only"> (unread)</span>}</motion.h2>
+      <motion.h2 layout="position" transition={LAYOUT} className={cn('leading-snug', unread ? 'font-semibold' : 'font-normal text-fg-muted', small ? 'line-clamp-2 text-xs' : large ? 'text-base' : 'line-clamp-2 text-sm')}>{item.title}{unread && <span className="sr-only"> (unread)</span>}</motion.h2>
 
       <AnimatePresence initial={false} mode="popLayout">
         {large && (
