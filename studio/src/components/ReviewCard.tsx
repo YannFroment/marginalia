@@ -51,6 +51,7 @@ export function ReviewCard({ item, unread, size, resizing }: { item: ReviewItem;
         {item.iid && <span className="font-mono">!{item.iid}</span>}
         {item.kind === 'comments' && <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-violet-700 dark:text-violet-300">triage</span>}
         <span>{timeAgo(item.reviewedAt)}</span>
+        {item.jira?.priority && <span className="rounded bg-zinc-500/10 px-1.5 py-0.5" title={`Jira priority of ${item.jira.key}`}>{item.jira.key} · {item.jira.priority}</span>}
       </motion.div>
 
       <motion.h2 layout="position" transition={LAYOUT} className={cn('leading-snug', unread ? 'font-semibold' : 'font-normal text-fg-muted', small ? 'line-clamp-2 text-xs' : large ? 'text-base' : 'line-clamp-2 text-sm')}>{item.title}{unread && <span className="sr-only"> (unread)</span>}</motion.h2>
