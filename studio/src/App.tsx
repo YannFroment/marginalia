@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { MotionConfig, motion } from 'motion/react';
-import { Inbox, LayoutGrid, Grid3x3, Rows3 } from 'lucide-react';
+import { Inbox, LayoutGrid, Grid3x3, List, Rows3 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { loadSeen, saveSeen, useMarkdown, useReviews, type ReviewItem } from './lib/api';
 import { usePersistentState, useOpenTabs } from './lib/layout';
@@ -10,6 +10,7 @@ import { TabStrip, type BotState } from './components/TabStrip';
 import { Sidebar } from './components/Sidebar';
 import { StatStrip, type Filter } from './components/StatStrip';
 import { ReviewCard, type CardSize } from './components/ReviewCard';
+import { ReviewRow } from './components/ReviewRow';
 // Not needed on Home, and the heaviest part of the bundle (markdown, highlighting, semfont).
 const loadReader = () => import('./components/ReviewReader');
 const ReviewReader = lazy(() => loadReader().then((m) => ({ default: m.ReviewReader })));
@@ -20,20 +21,23 @@ const EMPTY_POSTED = {};
 // Reviews older than this are hidden from the Home grid and its counters.
 const STALE_DAYS = 30;
 const SIZE_KEY = 'mr-review-viewer:card-size';
-const SIZES: { value: CardSize; label: string; Icon: typeof Grid3x3 }[] = [
+// "list": one line per review (title, branch, verdict), for scanning many MRs.
+type Layout = CardSize | 'list';
+const SIZES: { value: Layout; label: string; Icon: typeof Grid3x3 }[] = [
   { value: 'small', label: 'Small cards', Icon: Grid3x3 },
   { value: 'medium', label: 'Medium cards', Icon: LayoutGrid },
   { value: 'large', label: 'Large cards', Icon: Rows3 },
+  { value: 'list', label: 'List', Icon: List },
 ];
 const GRID: Record<CardSize, string> = {
   small: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5',
   medium: 'sm:grid-cols-2 lg:grid-cols-3',
   large: 'lg:grid-cols-2',
 };
-function loadSize(): CardSize {
+function loadSize(): Layout {
   try {
     const v = localStorage.getItem(SIZE_KEY);
-    return v === 'small' || v === 'large' ? v : 'medium';
+    return v === 'small' || v === 'large' || v === 'list' ? v : 'medium';
   } catch {
     return 'medium';
   }
@@ -59,7 +63,7 @@ export function App() {
   const [filter, setFilter] = useState<Filter>('all');
   const [tab, setTab] = useState<Tab>('review');
   const [seen, setSeen] = useState(loadSeen);
-  const [size, setSizeState] = useState<CardSize>(loadSize);
+  const [size, setSizeState] = useState<Layout>(loadSize);
   // Tucked away by default: the tabs are the working set, the sidebar is history.
   const [sidebarPref, setSidebarOpen] = usePersistentState('mr-review-viewer:sidebar-open', false);
 
@@ -68,7 +72,7 @@ export function App() {
   const resizeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(resizeTimer.current), []);
 
-  const setSize = (next: CardSize) => {
+  const setSize = (next: Layout) => {
     setResizing(true);
     clearTimeout(resizeTimer.current);
     resizeTimer.current = setTimeout(() => setResizing(false), 600);
@@ -277,6 +281,10 @@ export function App() {
 
           {data && visible.length === 0 ? (
             <div className="mt-16 flex flex-col items-center gap-2 text-fg-muted"><Inbox className="size-8" />No reviews match this filter.</div>
+          ) : size === 'list' ? (
+            <ul className="mt-6 divide-y divide-zinc-200 overflow-hidden rounded-xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+              {ordered.map((i) => <ReviewRow key={i.slug} item={i} unread={isUnread(i)} />)}
+            </ul>
           ) : (
             <div className={cn('mt-6 grid', size === 'small' ? 'gap-3' : 'gap-4', GRID[size])}>
                 {ordered.flatMap((i, idx) => [
