@@ -48,7 +48,7 @@ export interface Stack {
 export interface BotStatus {
   pid: number;
   phase: 'idle' | 'polling' | 'reviewing' | 'error' | 'stopped';
-  current: { iid: number; title: string; startedAt: string } | null;
+  current: { iid: number; title: string; startedAt: string; progress?: string[] } | null;
   lastPoll: { at: string; ok: boolean; error: string | null } | null;
   nextPollAt: string | null;
   mrs?: { iid: number; status: string; reviewPath?: string | null }[];

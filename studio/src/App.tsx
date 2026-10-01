@@ -234,7 +234,7 @@ export function App() {
         <>
         {stack && current && <StackBoard stack={stack} items={items} current={current} isPosted={isPosted} onSelect={go} />}
         <Suspense fallback={<p className="px-6 py-6 text-fg-muted">Loading…</p>}>
-        <ReviewReader item={current} markdown={markdown} projectUrl={data?.projectUrl ?? null} allowPosting={data?.allowPosting ?? false} posted={data?.posted ?? EMPTY_POSTED} reload={reload} />
+        <ReviewReader item={current} markdown={markdown} projectUrl={data?.projectUrl ?? null} allowPosting={data?.allowPosting ?? false} live={current && data?.status?.current && String(data.status.current.iid) === String(current.iid) ? data.status.current : null} posted={data?.posted ?? EMPTY_POSTED} reload={reload} />
         </Suspense>
         </>
       ) : (

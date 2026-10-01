@@ -10,6 +10,7 @@ settings.json
 settings.json.tmp
 posted.json
 posted.json.tmp
+runs.jsonl
 .marginalia-report.md
 .claude/
 mr-review-bot.10s.sh
