@@ -221,6 +221,13 @@ against the source, type check, tests); the date of the last deep review shows
 above the details. It gets the shell (`Bash`) on top of the review tools.
 Nothing is posted.
 
+**Run QA (on demand).** With `QA_COMMAND` set (see `examples/commands/qa.md`),
+each tracked review also gets a *Run QA* button, queued like *Deep review*. The
+command tests the MR's running app in a browser (the `mcp__chrome-devtools`
+tools are allowed on top of the deep review ones) and delivers a `## QA`
+section, which replaces the previous one at the end of the review file; the
+date of the last QA shows above the details.
+
 **Live progress and cost of each run.** Runs use `claude -p --output-format
 stream-json`. While a run is going, the studio shows its last steps above the
 review's details ("Opening …", "Reading …", the commands it runs). When it ends,

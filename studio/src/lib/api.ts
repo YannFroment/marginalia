@@ -23,6 +23,7 @@ export interface ReviewItem {
   stale: boolean;
   jira: { key: string; priority: string | null; rank: number | null } | null;
   lastDeepAt: string | null;
+  lastQaAt: string | null;
 }
 
 export interface CrossFinding {
@@ -82,6 +83,7 @@ interface ReviewsPayload {
   allowPosting: boolean;
   postDryRun?: boolean;
   deepenEnabled?: boolean;
+  qaEnabled?: boolean;
   posted: Record<string, PostedInfo>;
 }
 
@@ -157,7 +159,7 @@ export async function setPollInterval(minutes: number): Promise<void> {
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
 }
 
-export type ActionKind = 'deepen';
+export type ActionKind = 'deepen' | 'qa';
 
 export async function requestAction(slug: string, action: ActionKind): Promise<{ iid: number; state: 'started' | 'queued' }> {
   const res = await fetch('/api/action', {

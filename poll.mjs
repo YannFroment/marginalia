@@ -12,7 +12,7 @@ import { listOpenMergeRequests, reviewFileCoversLastPush, latestPeerCommentAt, g
 import { jiraPriorityOf } from './lib/jira.mjs';
 import { reviewOutputPath, mrCommentsOutputPath, mtimeOrNull } from './lib/paths.mjs';
 import { ensureBotWorktree } from './lib/worktree.mjs';
-import { runReview, runMrComments, runDeepen } from './lib/claude-runner.mjs';
+import { runReview, runMrComments, runDeepen, runQa } from './lib/claude-runner.mjs';
 import { analyzeStacks } from './lib/stack.mjs';
 
 async function poll() {
@@ -246,11 +246,12 @@ async function runPoll() {
   if (actionQueue.length) drainActions();
 }
 
-// On-demand runs from the studio ("Deep review"). They share the bot
+// On-demand runs from the studio ("Deep review", "Run QA"). They share the bot
 // worktree with the polls, so they wait for the running poll and polls wait
 // for them.
 const ACTIONS = {
   deepen: { run: runDeepen, busy: 'deepening', label: 'Deep review', done: 'Deep review ready' },
+  qa: { run: runQa, busy: 'testing', label: 'QA', done: 'QA report ready' },
 };
 const actionQueue = [];
 let runningAction = null;

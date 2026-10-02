@@ -17,7 +17,7 @@ import { useScrollLock } from '../lib/useScrollLock';
 import { usePersistentState } from '../lib/layout';
 import { useModalFocus } from '../lib/useModalFocus';
 import { createContext } from 'react';
-import { Check, ChevronRight, Clock, Copy, ExternalLink, Loader2, Microscope, PanelRight, Pencil, Send, Sparkles, Undo2 } from 'lucide-react';
+import { Check, ChevronRight, Clock, Copy, ExternalLink, FlaskConical, Loader2, Microscope, PanelRight, Pencil, Send, Sparkles, Undo2 } from 'lucide-react';
 import { postComment, requestAction, type ActionKind, type BotStatus, type PostedInfo, type ReviewItem } from '../lib/api';
 import type { BotState } from './TabIcon';
 import { cn, timeAgo } from '../lib/utils';
@@ -361,6 +361,17 @@ const ACTION_UI: Record<ActionKind, { Icon: typeof Microscope; label: Record<Act
       'The deep review replaces the automatic one when done. Slower and more expensive.',
     ].join('\n'),
   },
+  qa: {
+    Icon: FlaskConical,
+    label: { idle: 'Run QA', queued: 'QA queued', running: 'QA running…' },
+    title: [
+      'QA of the running app, not of the code:',
+      '• finds the review app of this MR and checks it answers',
+      '• plays adversarial scenarios in a browser, as a customer (B2C) and as an agent (B2B)',
+      '• takes a screenshot when something breaks',
+      'The result is added as a QA section at the end of this review.',
+    ].join('\n'),
+  },
 };
 
 function ActionButton({ slug, action, state }: { slug: string; action: ActionKind; state: ActionState }) {
@@ -408,7 +419,7 @@ function LiveRun({ live }: { live: NonNullable<BotStatus['current']> }) {
   );
 }
 
-export function ReviewReader({ item, markdown, projectUrl, allowPosting, postDryRun, deepenEnabled, botState, live, posted, reload }: { item: ReviewItem | undefined; markdown: string | null; projectUrl: string | null; allowPosting: boolean; postDryRun: boolean; deepenEnabled: boolean; botState: BotState; live: BotStatus['current']; posted: Record<string, PostedInfo>; reload: () => void }) {
+export function ReviewReader({ item, markdown, projectUrl, allowPosting, postDryRun, deepenEnabled, qaEnabled, botState, live, posted, reload }: { item: ReviewItem | undefined; markdown: string | null; projectUrl: string | null; allowPosting: boolean; postDryRun: boolean; deepenEnabled: boolean; qaEnabled: boolean; botState: BotState; live: BotStatus['current']; posted: Record<string, PostedInfo>; reload: () => void }) {
   const postCtx = useMemo(() => ({ allowPosting, postDryRun, slug: item?.slug ?? null, iid: item?.tracked ? item.iid : null, posted, reload }), [allowPosting, postDryRun, item?.slug, item?.tracked, item?.iid, posted, reload]);
   const linkCtx = useMemo(() => ({ projectUrl, branch: item?.branch ?? null, mrWebUrl: item?.webUrl ?? null }), [projectUrl, item?.branch, item?.webUrl]);
   const { intro, sections } = useMemo(() => splitSections(markdown ?? ''), [markdown]);
@@ -451,6 +462,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, postDry
             <Sparkles className="size-3.5" />Semantic type
           </button>
           {deepenEnabled && item?.tracked && <ActionButton slug={item.slug} action="deepen" state={botState === 'deepening' ? 'running' : botState === 'deepen-queued' ? 'queued' : 'idle'} />}
+          {qaEnabled && item?.tracked && <ActionButton slug={item.slug} action="qa" state={botState === 'testing' ? 'running' : botState === 'qa-queued' ? 'queued' : 'idle'} />}
           {item?.webUrl && (
             <a href={item.webUrl} target="_blank" rel="noreferrer" className="touch-target inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800">
               Open in GitLab<ExternalLink className="size-3.5" />
@@ -503,9 +515,10 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, postDry
             className={cn('sticky top-[calc(var(--chrome-h)+1rem)] hidden h-[calc(100vh-var(--chrome-h)-2rem)] shrink-0 self-start overflow-hidden transition-[width,opacity] duration-300 ease-out motion-reduce:transition-none lg:block', panelOpen ? 'w-64 opacity-100' : 'w-0 opacity-0')}
           >
             <div className="flex h-full w-64 flex-col gap-5 overflow-y-auto pr-1 text-sm">
-              {live ? <LiveRun live={live} /> : item?.lastDeepAt && (
+              {live ? <LiveRun live={live} /> : (item?.lastDeepAt || item?.lastQaAt) && (
                 <section className="space-y-1.5 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                  <p className="flex items-center gap-2"><Microscope className="size-4 shrink-0" aria-hidden />Deep review on {formatRunAt(item.lastDeepAt)}</p>
+                  {item.lastDeepAt && <p className="flex items-center gap-2"><Microscope className="size-4 shrink-0" aria-hidden />Deep review on {formatRunAt(item.lastDeepAt)}</p>}
+                  {item.lastQaAt && <p className="flex items-center gap-2"><FlaskConical className="size-4 shrink-0" aria-hidden />QA run on {formatRunAt(item.lastQaAt)}</p>}
                 </section>
               )}
               <section>
