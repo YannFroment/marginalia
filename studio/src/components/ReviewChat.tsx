@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Loader2, MessageSquare, Send } from 'lucide-react';
-import { sendChat } from '../lib/api';
+import { ChevronDown, ChevronUp, Loader2, MessageSquare, Send } from 'lucide-react';
+import { chatEvents, sendChat } from '../lib/api';
 import { cn } from '../lib/utils';
 
 type Message = { role: 'you' | 'bot'; text: string; error?: boolean };
@@ -20,8 +20,10 @@ export function ReviewChat({ slug }: { slug: string }) {
   const [messages, setMessages] = useState<Message[]>(() => loadHistory(slug));
   const [draft, setDraft] = useState('');
   const [steps, setSteps] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
-  const endRef = useRef<HTMLDivElement>(null);
+  const [pending, setPending] = useState(0);
+  const busy = pending > 0;
+  const logRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(true);
 
   useEffect(() => {
     setMessages(loadHistory(slug));
@@ -33,50 +35,62 @@ export function ReviewChat({ slug }: { slug: string }) {
       /* history is a convenience */
     }
   }, [slug, messages]);
+  // Like a terminal: the history scrolls inside its own box, newest at the bottom.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'nearest' });
-  }, [messages, steps]);
+    const log = logRef.current;
+    if (log) log.scrollTop = log.scrollHeight;
+  }, [messages, steps, open]);
 
+  // Answers stream in from the open discussion, whoever sent the message.
+  useEffect(
+    () =>
+      chatEvents(slug, (event) => {
+        setPending(event.pending);
+        if (event.type === 'step' && event.text) setSteps((s) => [...s, event.text!].slice(-4));
+        if (event.type === 'answer' || event.type === 'error') {
+          setSteps([]);
+          setMessages((m) => [...m, { role: 'bot', text: event.text ?? '', error: event.type === 'error' }]);
+        }
+      }),
+    [slug],
+  );
+
+  // Like a terminal: a message can be sent at any time; it is answered in turn.
   const ask = async () => {
     const text = draft.trim();
-    if (!text || busy) return;
+    if (!text) return;
     setDraft('');
-    setBusy(true);
-    setSteps([]);
     setMessages((m) => [...m, { role: 'you', text }]);
     try {
-      await sendChat(slug, text, (line) => {
-        if (line.type === 'step') setSteps((s) => [...s, line.text].slice(-4));
-        else setMessages((m) => [...m, { role: 'bot', text: line.text, error: line.type === 'error' }]);
-      });
+      await sendChat(slug, text);
     } catch (e) {
       setMessages((m) => [...m, { role: 'bot', text: (e as Error).message, error: true }]);
-    } finally {
-      setBusy(false);
-      setSteps([]);
     }
   };
 
   return (
-    <section aria-label="Ask the bot" className="not-prose mt-6 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold"><MessageSquare className="size-4" aria-hidden />Ask the bot about this review</h2>
-      {messages.length > 0 && (
-        <ol className="mb-3 space-y-3" aria-live="polite">
+    <section aria-label="Ask the bot" className="not-prose mt-6 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="mb-2 flex w-full items-center gap-2 text-left text-sm font-semibold">
+        <MessageSquare className="size-4" aria-hidden />Ask the bot about this review
+        {messages.length > 0 && <span className="text-xs font-normal text-fg-muted">({messages.length})</span>}
+        {open ? <ChevronDown className="ml-auto size-4" aria-hidden /> : <ChevronUp className="ml-auto size-4" aria-hidden />}
+      </button>
+      {open && (
+        <div ref={logRef} className={cn('mb-2 space-y-3 overflow-y-auto pr-1', messages.length || busy ? 'h-[40vh]' : 'hidden')} aria-live="polite">
           {messages.map((m, i) => (
-            <li key={i} className={cn('whitespace-pre-wrap rounded-lg px-3 py-2 text-sm', m.role === 'you' ? 'ml-8 bg-blue-500/10' : 'mr-8 bg-zinc-500/10', m.error && 'text-red-600 dark:text-red-400')}>
+            <div key={i} className={cn('whitespace-pre-wrap rounded-lg px-3 py-2 text-sm', m.role === 'you' ? 'ml-8 bg-blue-500/10' : 'mr-8 bg-zinc-500/10', m.error && 'text-red-600 dark:text-red-400')}>
               <span className="mb-0.5 block text-xs font-medium text-fg-muted">{m.role === 'you' ? 'You' : 'Bot'}</span>
               {m.text}
-            </li>
+            </div>
           ))}
-        </ol>
-      )}
-      {busy && (
-        <div className="mb-3 space-y-1 text-xs text-fg-muted" aria-live="polite">
-          <p className="flex items-center gap-1.5"><Loader2 className="size-3 animate-spin motion-reduce:animate-pulse" aria-hidden />The bot is answering…</p>
-          {steps.map((s, i) => <p key={i} className="truncate pl-4">{s}</p>)}
+          {busy && (
+            <div className="space-y-1 text-xs text-fg-muted">
+              <p className="flex items-center gap-1.5"><Loader2 className="size-3 animate-spin motion-reduce:animate-pulse" aria-hidden />The bot is answering…{pending > 1 && ` (${pending - 1} more waiting)`}</p>
+              {steps.map((s, i) => <p key={i} className="truncate pl-4">{s}</p>)}
+            </div>
+          )}
         </div>
       )}
-      <div ref={endRef} />
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -99,7 +113,7 @@ export function ReviewChat({ slug }: { slug: string }) {
           placeholder="Why is this a blocker? Can you check the B2B flow too?"
           className="min-h-[2.5rem] flex-1 resize-y rounded-md border border-zinc-300 bg-white p-2 text-sm outline-none focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/50 dark:border-zinc-700 dark:bg-zinc-900"
         />
-        <button type="submit" disabled={busy || !draft.trim()} className="touch-target inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50">
+        <button type="submit" disabled={!draft.trim()} className="touch-target inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50">
           <Send className="size-3.5" aria-hidden />Send
         </button>
       </form>
