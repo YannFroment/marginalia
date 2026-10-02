@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Command, Loader2, RefreshCw, Eye, TriangleAlert, Power, ShieldCheck } from 'lucide-react';
 import { setPollInterval, type BotStatus } from '../lib/api';
 import { inTime, timeAgo } from '../lib/utils';
+import { Logo } from './Logo';
 
 function BotState({ status }: { status: BotStatus | null }) {
   if (!status || status.phase === 'stopped') {
@@ -66,7 +67,7 @@ export function StatusBar({ status, pollMinutes, onOpenPalette, onHome }: { stat
   return (
     <div className="border-b border-zinc-200 dark:border-zinc-800">
       <div className="flex h-14 items-center gap-4 px-4">
-        <button onClick={onHome} className="touch-target font-semibold tracking-tight">Marginalia</button>
+        <button onClick={onHome} className="touch-target flex items-center gap-2 font-semibold tracking-tight"><Logo />Marginalia</button>
         <div className="ml-2 text-sm"><BotState status={status} /></div>
         {status?.lastPoll && (
           <span className="hidden text-xs text-fg-muted md:inline">last poll {timeAgo(status.lastPoll.at)}</span>

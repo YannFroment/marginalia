@@ -16,6 +16,9 @@ function studioPort() {
     return '4477';
   }
 }
+// Idle icon: the Marginalia mark as a template image (macOS tints it for light/dark).
+const LOGO_B64 = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'marginalia-template.png')).toString('base64');
+
 const STUDIO_URL = `http://localhost:${studioPort()}`;
 
 function readStatus() {
@@ -89,7 +92,7 @@ if (!alive) {
 } else if (failedCount > 0) {
   lines.push(`${failedCount} | sfimage=checkmark.seal sfcolor=orange`);
 } else {
-  lines.push('| sfimage=checkmark.seal');
+  lines.push(`| templateImage=${LOGO_B64}`);
 }
 lines.push('---');
 
