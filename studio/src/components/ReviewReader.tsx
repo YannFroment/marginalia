@@ -17,7 +17,7 @@ import { useScrollLock } from '../lib/useScrollLock';
 import { usePersistentState } from '../lib/layout';
 import { useModalFocus } from '../lib/useModalFocus';
 import { createContext } from 'react';
-import { Check, ChevronRight, Copy, ExternalLink, Loader2, PanelRight, Pencil, Send, Sparkles, Undo2 } from 'lucide-react';
+import { Check, ChevronRight, Copy, ExternalLink, Loader2, PanelRight, Pencil, Send, Sparkles, Undo2, SquareTerminal } from 'lucide-react';
 import { postComment, type BotStatus, type PostedInfo, type ReviewItem } from '../lib/api';
 import { cn, timeAgo } from '../lib/utils';
 import { VerdictBadge } from './VerdictBadge';
@@ -403,6 +403,22 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, live, p
           >
             <Sparkles className="size-3.5" />Semantic type
           </button>
+          {item?.resumeCommand && (
+            <button
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(item.resumeCommand!);
+                  toast.success('Command copied: paste it in a terminal to talk with the bot', { description: item.resumeCommand! });
+                } catch {
+                  toast.error('Could not copy: clipboard access was denied', { description: item.resumeCommand! });
+                }
+              }}
+              title={'Copies the command that resumes, in your terminal, the Claude session of the latest run on this MR, with everything it read.\nThe bot worktree may have moved on to another MR since.'}
+              className="touch-target inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+            >
+              <SquareTerminal className="size-3.5" aria-hidden />Continue in terminal
+            </button>
+          )}
           {item?.webUrl && (
             <a href={item.webUrl} target="_blank" rel="noreferrer" className="touch-target inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800">
               Open in GitLab<ExternalLink className="size-3.5" />

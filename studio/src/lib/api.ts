@@ -21,6 +21,7 @@ export interface ReviewItem {
   stackId: string | null;
   crossLayer: CrossFinding[];
   stale: boolean;
+  resumeCommand: string | null;
 }
 
 export interface CrossFinding {

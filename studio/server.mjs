@@ -7,12 +7,13 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { watch } from 'node:fs';
 import { join, dirname, extname, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING } from '../lib/config.mjs';
+import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING, BOT_WORKTREE_DIR } from '../lib/config.mjs';
 import { TRIAGE_FILE_PREFIX } from '../lib/paths.mjs';
 import { loadPosted, savePosted } from '../lib/posted.mjs';
 import { postMergeRequestNote, postMergeRequestInlineNote, mergeRequestNoteExists } from '../lib/gitlab.mjs';
 import { loadSettings, saveSettings } from '../lib/settings.mjs';
 import { parseAcrossLayers } from '../lib/stack.mjs';
+import { lastSessionByMr } from '../lib/runlog.mjs';
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), 'dist');
 const SLUG_RE = /^[\w.-]+$/;
@@ -146,6 +147,7 @@ async function listReviews() {
   await reconcilePosted();
   const status = await readStatus();
   const byPath = new Map((status?.mrs ?? []).map((mr) => [mr.reviewPath, mr]));
+  const sessions = await lastSessionByMr();
   let names = [];
   try {
     names = (await readdir(REVIEWS_DIR)).filter((n) => n.endsWith('.md'));
@@ -177,6 +179,8 @@ async function listReviews() {
       stale: mr?.status === 'pending' && Boolean(mr?.reviewedAt),
       mtime: st.mtime.toISOString(),
       reviewedAt: mr?.reviewedAt ?? st.mtime.toISOString(),
+      // Resumes the Claude session of the latest run on this MR, where it ran.
+      resumeCommand: mr && sessions[mr.iid] ? `cd ${JSON.stringify(BOT_WORKTREE_DIR)} && claude --resume ${sessions[mr.iid]}` : null,
       tracked: Boolean(mr),
     };
   }));
