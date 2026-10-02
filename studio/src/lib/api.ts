@@ -21,6 +21,7 @@ export interface ReviewItem {
   stackId: string | null;
   crossLayer: CrossFinding[];
   stale: boolean;
+  jira: { key: string; priority: string | null; rank: number | null } | null;
 }
 
 export interface CrossFinding {
