@@ -112,12 +112,13 @@ const writeEdit = (key: string, value: string | null) => {
 
 interface PostContextValue {
   allowPosting: boolean;
+  postDryRun: boolean;
   slug: string | null;
   iid: string | number | null;
   posted: Record<string, PostedInfo>;
   reload: () => void;
 }
-const PostContext = createContext<PostContextValue>({ allowPosting: false, slug: null, iid: null, posted: {}, reload: () => {} });
+const PostContext = createContext<PostContextValue>({ allowPosting: false, postDryRun: false, slug: null, iid: null, posted: {}, reload: () => {} });
 // The markdown a blockquote's `position.start.offset` refers to (one section body, not the whole review).
 const SourceContext = createContext('');
 
@@ -125,7 +126,7 @@ const SourceContext = createContext('');
 const COMMENT_LABEL = /^comment to post\s*:?$/i;
 
 // Nothing is sent until "Post comment" is clicked here, with the final text.
-function ConfirmPost({ iid, text, target, onCancel, onConfirm, fallbackRef }: { iid: string | number; text: string; target: { path: string; line?: number } | null; onCancel: () => void; onConfirm: () => Promise<void>; fallbackRef: RefObject<HTMLElement | null> }) {
+function ConfirmPost({ iid, text, target, dryRun, onCancel, onConfirm, fallbackRef }: { iid: string | number; text: string; target: { path: string; line?: number } | null; dryRun: boolean; onCancel: () => void; onConfirm: () => Promise<void>; fallbackRef: RefObject<HTMLElement | null> }) {
   const [busy, setBusy] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   useScrollLock(true);
@@ -140,7 +141,7 @@ function ConfirmPost({ iid, text, target, onCancel, onConfirm, fallbackRef }: { 
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={busy ? undefined : onCancel}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="confirm-post-title" aria-describedby="confirm-post-text" className="w-full max-w-lg rounded-xl border border-zinc-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900" onClick={(e) => e.stopPropagation()}>
         <h2 id="confirm-post-title" className="text-base font-semibold">Post this comment on !{iid}?</h2>
-        <p className="mt-1 text-sm text-fg-muted">It will be posted on GitLab under your account and visible to the MR author.</p>
+        <p className="mt-1 text-sm text-fg-muted">{dryRun ? 'Dry run: nothing will be sent to GitLab.' : 'It will be posted on GitLab under your account and visible to the MR author.'}</p>
         <p className="mt-1 text-sm text-fg-muted">
           {target ? <>Anchored on <code className="rounded bg-zinc-100 px-1 py-0.5 text-[0.85em] dark:bg-zinc-800">{target.path}{target.line ? `:${target.line}` : ''}</code> in the diff{target.line ? '' : ' (whole file)'}.</> : 'No file found above it: it will be a general comment.'}
         </p>
@@ -261,11 +262,16 @@ function Quote({ children, offset }: { children?: ReactNode; offset?: number }) 
           iid={post.iid}
           text={current}
           target={target}
+          dryRun={post.postDryRun}
           fallbackRef={rootRef}
           onCancel={() => setConfirming(false)}
           onConfirm={async () => {
             const posted = await postComment(post.slug!, commentId, current, target ?? undefined);
             setConfirming(false);
+            if ('simulated' in posted) {
+              toast.info(`Dry run: would post on ${posted.path ? `${posted.path}${posted.line ? `:${posted.line}` : ''}` : 'the MR'} of !${posted.iid}`);
+              return;
+            }
             post.reload();
             if (target && posted.inline === false) toast.warning('Could not anchor it to the diff, posted as a general comment');
             toast.success(posted.inline ? `Comment posted on ${target?.path}${target?.line ? `:${target.line}` : ''}` : `Comment posted on !${post.iid}`, { action: { label: 'Open', onClick: () => window.open(posted.url, '_blank', 'noopener') } });
@@ -340,8 +346,8 @@ function Md({ children, semantic }: { children: string; semantic: boolean }) {
   );
 }
 
-export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted, reload }: { item: ReviewItem | undefined; markdown: string | null; projectUrl: string | null; allowPosting: boolean; posted: Record<string, PostedInfo>; reload: () => void }) {
-  const postCtx = useMemo(() => ({ allowPosting, slug: item?.slug ?? null, iid: item?.tracked ? item.iid : null, posted, reload }), [allowPosting, item?.slug, item?.tracked, item?.iid, posted, reload]);
+export function ReviewReader({ item, markdown, projectUrl, allowPosting, postDryRun, posted, reload }: { item: ReviewItem | undefined; markdown: string | null; projectUrl: string | null; allowPosting: boolean; postDryRun: boolean; posted: Record<string, PostedInfo>; reload: () => void }) {
+  const postCtx = useMemo(() => ({ allowPosting, postDryRun, slug: item?.slug ?? null, iid: item?.tracked ? item.iid : null, posted, reload }), [allowPosting, postDryRun, item?.slug, item?.tracked, item?.iid, posted, reload]);
   const linkCtx = useMemo(() => ({ projectUrl, branch: item?.branch ?? null, mrWebUrl: item?.webUrl ?? null }), [projectUrl, item?.branch, item?.webUrl]);
   const { intro, sections } = useMemo(() => splitSections(markdown ?? ''), [markdown]);
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});

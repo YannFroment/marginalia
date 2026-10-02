@@ -62,6 +62,15 @@ export interface PostedInfo {
   inline?: boolean;
 }
 
+// POST_DRY_RUN=true: what would have been posted, nothing sent to GitLab.
+export interface SimulatedPost {
+  simulated: true;
+  iid: number;
+  path: string | null;
+  line: number | null;
+  body: string;
+}
+
 interface ReviewsPayload {
   status: BotStatus | null;
   items: ReviewItem[];
@@ -69,6 +78,7 @@ interface ReviewsPayload {
   projectUrl: string | null;
   settings: { pollIntervalMinutes: number };
   allowPosting: boolean;
+  postDryRun?: boolean;
   posted: Record<string, PostedInfo>;
 }
 
@@ -144,7 +154,7 @@ export async function setPollInterval(minutes: number): Promise<void> {
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
 }
 
-export async function postComment(slug: string, commentId: string, body: string, target?: { path: string; line?: number }): Promise<PostedInfo> {
+export async function postComment(slug: string, commentId: string, body: string, target?: { path: string; line?: number }): Promise<PostedInfo | SimulatedPost> {
   const res = await fetch('/api/post', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

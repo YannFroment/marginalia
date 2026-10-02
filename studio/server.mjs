@@ -7,7 +7,7 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { watch } from 'node:fs';
 import { join, dirname, extname, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING } from '../lib/config.mjs';
+import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING, POST_DRY_RUN } from '../lib/config.mjs';
 import { TRIAGE_FILE_PREFIX } from '../lib/paths.mjs';
 import { loadPosted, savePosted } from '../lib/posted.mjs';
 import { postMergeRequestNote, postMergeRequestInlineNote, mergeRequestNoteExists } from '../lib/gitlab.mjs';
@@ -183,7 +183,7 @@ async function listReviews() {
   items.sort((a, b) => b.reviewedAt.localeCompare(a.reviewedAt));
   // https://host/group/project, from any tracked MR url; used to link !123 and file paths.
   const projectUrl = (status?.mrs ?? []).map((mr) => mr.web_url?.match(/^(.*)\/-\/merge_requests\/\d+/)?.[1]).find(Boolean) ?? null;
-  return { status, items, stacks: buildStacks(status), projectUrl, settings: loadSettings(), allowPosting: ALLOW_POSTING === 'true', posted: await loadPosted() };
+  return { status, items, stacks: buildStacks(status), projectUrl, settings: loadSettings(), allowPosting: ALLOW_POSTING === 'true', postDryRun: POST_DRY_RUN === 'true', posted: await loadPosted() };
 }
 
 const clients = new Set();
@@ -291,6 +291,7 @@ async function postComment(req, res) {
     const posted = await loadPosted();
     const key = `${slug}:${commentId}`;
     if (posted[key]) return json(res, 409, { error: 'already posted', posted: posted[key] });
+    if (POST_DRY_RUN === 'true') return json(res, 200, { simulated: true, iid: mr.iid, path: hasTarget ? path : null, line: hasTarget ? (line ?? null) : null, body: body.trim() });
     let noteId;
     let inline = false;
     try {
