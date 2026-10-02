@@ -238,7 +238,7 @@ function Quote({ children, offset, number }: { children?: ReactNode; offset?: nu
 
   return (
     <div ref={rootRef} tabIndex={-1} className="not-prose my-4 rounded-lg border border-blue-500/30 bg-blue-500/5 p-4 focus:outline-none">
-      <div className="mb-2 flex items-center justify-between gap-2 text-xs font-medium uppercase tracking-wide text-blue-700 dark:text-blue-300">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs font-medium uppercase tracking-wide text-blue-700 dark:text-blue-300">
         <span>
           {number && <span className="mr-1.5 font-mono">#{number}</span>}
           Comment to post{edited !== null && !editing ? ' · edited' : ''}
@@ -248,7 +248,7 @@ function Quote({ children, offset, number }: { children?: ReactNode; offset?: nu
             </a>
           )}
         </span>
-        <span className="flex items-center gap-1.5 normal-case tracking-normal">
+        <span className="flex flex-wrap items-center justify-end gap-1.5 normal-case tracking-normal [&>button]:whitespace-nowrap">
           {edited !== null && (
             <button onClick={reset} className="touch-target inline-flex items-center justify-center gap-1 rounded-md px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">
               <Undo2 className="size-3.5" />Reset
