@@ -8,7 +8,7 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { watch } from 'node:fs';
 import { join, dirname, extname, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING, POST_DRY_RUN, DEEPEN_COMMAND, QA_COMMAND, BOT_WORKTREE_DIR } from '../lib/config.mjs';
+import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING, POST_DRY_RUN, DEEPEN_COMMAND, QA_COMMAND, BOT_WORKTREE_DIR, CLAUDE_BIN, CLAUDE_ALLOWED_TOOLS } from '../lib/config.mjs';
 import { TRIAGE_FILE_PREFIX } from '../lib/paths.mjs';
 import { loadPosted, savePosted } from '../lib/posted.mjs';
 import { postMergeRequestNote, postMergeRequestInlineNote, mergeRequestNoteExists } from '../lib/gitlab.mjs';
@@ -16,7 +16,8 @@ import { byPriorityThenDate } from '../lib/jira.mjs';
 import { lastRunsByMr } from '../lib/runlog.mjs';
 import { loadSettings, saveSettings } from '../lib/settings.mjs';
 import { parseAcrossLayers } from '../lib/stack.mjs';
-import { lastSessionByMr } from '../lib/runlog.mjs';
+import { appendRun, lastSessionByMr } from '../lib/runlog.mjs';
+import { createChats } from '../lib/chat.mjs';
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), 'dist');
 const SLUG_RE = /^[\w.-]+$/;
@@ -354,12 +355,63 @@ async function postComment(req, res) {
   return run;
 }
 
+// Chat with the bot about one review, as in a terminal: one Claude stays open
+// per review (lib/chat.mjs), resumed from the latest run's session. POST sends
+// a message, the page follows the answers on GET /api/chat/stream (SSE).
+// Read-only tools only: nothing is committed or posted.
+const CHAT_PROMPT = [
+  'You are answering the person who reads this review in the marginalia studio chat.',
+  'Answer only their message, about this merge request and your review of it, in their language and briefly.',
+  'Ignore notices about tools, MCP servers or connectors, and never mention them.',
+  'Ignore notices that files changed since your run: other runs reuse this folder. Read a file again only if the question needs it.',
+  'Never post, push or commit anything.',
+].join('\n');
+const { ANTHROPIC_API_KEY: _unusedKey, ...chatEnv } = process.env;
+const chats = createChats({
+  bin: CLAUDE_BIN,
+  cwd: BOT_WORKTREE_DIR,
+  env: chatEnv,
+  args: ['--allowedTools', CLAUDE_ALLOWED_TOOLS.join(' '), '--append-system-prompt', CHAT_PROMPT],
+  onAnswer: ({ iid, sessionId, costUsd, turns }) => appendRun({ iid, kind: 'chat', command: 'chat', sessionId, costUsd, turns }),
+});
+
+async function chatTarget(slug) {
+  if (typeof slug !== 'string' || !SLUG_RE.test(slug)) return { error: [400, 'bad slug'] };
+  const status = await readStatus();
+  const mr = (status?.mrs ?? []).find((m) => m.reviewPath && m.reviewPath === join(REVIEWS_DIR, `${slug}.md`));
+  if (!mr) return { error: [404, 'no tracked merge request for this review'] };
+  const sessionId = (await lastSessionByMr())[mr.iid];
+  if (!sessionId) return { error: [409, 'no bot session to resume for this MR yet'] };
+  return { mr, sessionId };
+}
+
+async function chat(req, res) {
+  const input = await readJsonBody(req, res);
+  if (input === null) return undefined;
+  const { slug, message } = input;
+  if (typeof message !== 'string' || !message.trim() || message.length > 4000) return json(res, 400, { error: 'message must be a non-empty string under 4000 characters' });
+  const { mr, sessionId, error } = await chatTarget(slug);
+  if (error) return json(res, error[0], { error: error[1] });
+  return json(res, 202, { pending: chats.send(slug, sessionId, { iid: mr.iid }, message.trim()) });
+}
+
+function chatStream(req, res, slug) {
+  if (!SLUG_RE.test(slug ?? '')) return json(res, 400, { error: 'bad slug' });
+  res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
+  res.write(`data: ${JSON.stringify({ type: 'hello', pending: chats.pending(slug) })}\n\n`);
+  const stop = chats.listen(slug, (event) => res.write(`data: ${JSON.stringify(event)}\n\n`));
+  req.on('close', stop);
+  return undefined;
+}
+
 async function handle(req, res) {
   const { pathname } = new URL(req.url, 'http://localhost');
   if (req.method === 'PUT' && pathname === '/api/settings') return putSettings(req, res);
   if (req.method === 'POST' && pathname === '/api/post') return postComment(req, res);
   if (req.method === 'POST' && pathname === '/api/action') return runAction(req, res);
+  if (req.method === 'POST' && pathname === '/api/chat') return chat(req, res);
   if (req.method !== 'GET') return json(res, 405, { error: 'read-only' });
+  if (pathname === '/api/chat/stream') return chatStream(req, res, new URL(req.url, 'http://localhost').searchParams.get('slug'));
 
   if (pathname === '/api/reviews') return json(res, 200, await listReviews());
 

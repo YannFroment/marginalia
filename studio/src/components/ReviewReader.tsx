@@ -20,6 +20,7 @@ import { createContext } from 'react';
 import { Check, ChevronRight, Clock, Copy, ExternalLink, FlaskConical, Loader2, Microscope, PanelRight, Pencil, Send, Sparkles, Undo2, SquareTerminal } from 'lucide-react';
 import { postComment, requestAction, type ActionKind, type BotStatus, type PostedInfo, type ReviewItem } from '../lib/api';
 import type { BotState } from './TabIcon';
+import { ReviewChat } from './ReviewChat';
 import { cn, timeAgo } from '../lib/utils';
 import { VerdictBadge } from './VerdictBadge';
 import { LinkContext, commentLocation, linkify, linkifyCode, type LinkContextValue } from '../lib/links';
@@ -522,6 +523,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, postDry
                 </Collapsible.Content>
               </Collapsible.Root>
             ))}
+            {item?.resumeCommand && <ReviewChat slug={item.slug} />}
           </article>
 
           {/* Side panel: context that stays visible while reading. Collapses to give the article the room. */}
