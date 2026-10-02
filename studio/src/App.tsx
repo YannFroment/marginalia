@@ -14,6 +14,7 @@ import { ReviewCard, type CardSize } from './components/ReviewCard';
 const loadReader = () => import('./components/ReviewReader');
 const ReviewReader = lazy(() => loadReader().then((m) => ({ default: m.ReviewReader })));
 import { CommandPalette } from './components/CommandPalette';
+import { StackBoard } from './components/StackBoard';
 
 const EMPTY_POSTED = {};
 // Reviews older than this are hidden from the Home grid and its counters.
@@ -111,6 +112,7 @@ export function App() {
   }, [data]);
   const isPosted = (i: ReviewItem) => Object.keys(data?.posted ?? {}).some((k) => k.startsWith(`${i.slug}:`));
   const current = items.find((i) => i.slug === slug);
+  const stack = current?.stackId ? data?.stacks.find((s) => s.id === current.stackId) : undefined;
   const markdown = useMarkdown(slug, current?.reviewedAt);
 
   useEffect(() => {
@@ -229,9 +231,12 @@ export function App() {
         <Sidebar items={items} activeSlug={slug} botBySlug={botBySlug} isUnread={isUnread} open={sidebarOpen} onSelect={go} onClose={() => setSidebarOpen(false)} />
         <main className="min-w-0 flex-1">
       {slug ? (
+        <>
+        {stack && current && <StackBoard stack={stack} items={items} current={current} isPosted={isPosted} onSelect={go} />}
         <Suspense fallback={<p className="px-6 py-6 text-fg-muted">Loading…</p>}>
         <ReviewReader item={current} markdown={markdown} projectUrl={data?.projectUrl ?? null} allowPosting={data?.allowPosting ?? false} posted={data?.posted ?? EMPTY_POSTED} reload={reload} />
         </Suspense>
+        </>
       ) : (
         <div className="mx-auto max-w-7xl px-6 py-8">
           <h1 className="text-3xl font-semibold tracking-tight">Review queue</h1>

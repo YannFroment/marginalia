@@ -12,6 +12,7 @@ import { listOpenMergeRequests, reviewFileCoversLastPush, latestPeerCommentAt } 
 import { reviewOutputPath, mrCommentsOutputPath, mtimeOrNull } from './lib/paths.mjs';
 import { ensureBotWorktree } from './lib/worktree.mjs';
 import { runReview, runMrComments } from './lib/claude-runner.mjs';
+import { analyzeStacks } from './lib/stack.mjs';
 
 async function poll() {
   const ts = timestamp();
@@ -20,16 +21,32 @@ async function poll() {
   await writeStatus();
   const state = await loadState();
   state.mineComments ??= {};
+  state.stackBelow ??= {};
+  const openMrs = await listOpenMergeRequests();
+  // A stacked MR targets the branch of the MR below it, so the allowed-targets
+  // filter looks at the branch the whole stack is based on.
+  const stacks = analyzeStacks(openMrs);
+  const openByIid = new Map(openMrs.map((mr) => [mr.iid, mr]));
   const allMrs = allowedTargets.length
-    ? (await listOpenMergeRequests()).filter((mr) => allowedTargets.includes(mr.target_branch))
-    : await listOpenMergeRequests();
+    ? openMrs.filter((mr) => allowedTargets.includes(stacks.get(mr.iid).baseBranch))
+    : openMrs;
+  const stackInfo = (mr) => {
+    const info = stacks.get(mr.iid);
+    return info && info.size > 1 ? info : null;
+  };
+  const parentOf = (mr) => openByIid.get(stacks.get(mr.iid)?.parentIid) ?? null;
+  // Reviewed at this commit, and the layer below hasn't moved since.
+  const isCurrent = (mr) => state[mr.iid] === mr.sha && (parentOf(mr) === null || state.stackBelow[mr.iid] === parentOf(mr).sha);
 
   // MRs authored by someone else go through /code-review as before; MRs I
   // authored myself get their reviewer comments triaged via /mr-comments.
-  const reviewMrs = allMrs.filter((mr) => mr.author.username !== GITLAB_USERNAME);
+  // Bottom layers first, so a layer is reviewed after the ones it builds on.
+  const reviewMrs = allMrs
+    .filter((mr) => mr.author.username !== GITLAB_USERNAME)
+    .sort((a, b) => stacks.get(a.iid).depth - stacks.get(b.iid).depth);
   const myMrs = TRIAGE_COMMAND ? allMrs.filter((mr) => mr.author.username === GITLAB_USERNAME) : [];
 
-  const toReview = reviewMrs.filter((mr) => state[mr.iid] !== mr.sha);
+  const toReview = reviewMrs.filter((mr) => !isCurrent(mr));
   const peerCommentAts = await Promise.all(myMrs.map((mr) => latestPeerCommentAt(mr)));
   const myMrsWithSignal = myMrs.map((mr, i) => ({ mr, peerCommentAt: peerCommentAts[i] }));
   const toTriage = myMrsWithSignal.filter(
@@ -47,7 +64,10 @@ async function poll() {
       web_url: mr.web_url,
       author: mr.author.username,
       kind: 'review',
-      status: state[mr.iid] === mr.sha ? 'up_to_date' : 'pending',
+      status: isCurrent(mr) ? 'up_to_date' : 'pending',
+      targetBranch: mr.target_branch,
+      sourceBranch: mr.source_branch,
+      stack: stackInfo(mr) && { id: stackInfo(mr).id, position: stackInfo(mr).position, size: stackInfo(mr).size, parentIid: stackInfo(mr).parentIid, baseBranch: stackInfo(mr).baseBranch },
       reviewPath: reviewOutputPath(mr),
       reviewedAt: reviewedAts[i] === null ? null : new Date(reviewedAts[i]).toISOString(),
       error: null,
@@ -75,10 +95,17 @@ async function poll() {
       `${needColor}${toReview.length} need a review, ${toTriage.length} need comment triage${c.reset}.`,
   );
 
+  // The lower layer's commit this review was made on top of; when it moves, this layer is stale.
+  const recordBelow = (mr) => {
+    const parent = parentOf(mr);
+    if (parent) state.stackBelow[mr.iid] = parent.sha;
+    else delete state.stackBelow[mr.iid];
+  };
+
   const seenReviewIids = new Set();
   for (const mr of reviewMrs) {
     seenReviewIids.add(String(mr.iid));
-    if (state[mr.iid] === mr.sha) continue; // already reviewed at this commit
+    if (isCurrent(mr)) continue; // already reviewed at this commit, on top of the same lower layer
 
     // First time the bot ever sees this MR: if a review file already sits there
     // (written by hand via /code-review, or by a previous run of this bot before
@@ -88,6 +115,7 @@ async function poll() {
     if (state[mr.iid] === undefined && (await reviewFileCoversLastPush(mr))) {
       log(mr, `A review file newer than the last push already exists at ${reviewOutputPath(mr)}, assuming it covers this commit. Skipping.`);
       state[mr.iid] = mr.sha;
+      recordBelow(mr);
       await saveState(state);
       await setMrStatus(mr, { status: 'up_to_date' });
       continue;
@@ -97,9 +125,11 @@ async function poll() {
     status.current = { iid: mr.iid, title: mr.title, web_url: mr.web_url, startedAt: new Date().toISOString() };
     await setMrStatus(mr, { status: 'reviewing' });
     try {
-      const outcome = await runReview(mr);
+      const info = stackInfo(mr);
+      const outcome = await runReview(mr, reviewOutputPath(mr), info && { stacks, info });
       if (outcome === 'reviewed') {
         state[mr.iid] = mr.sha;
+        recordBelow(mr);
         await saveState(state);
         await setMrStatus(mr, { status: 'up_to_date', reviewedAt: new Date().toISOString() });
         notify('Review ready', `!${mr.iid} ${mr.title}`, reviewOutputPath(mr));
@@ -153,8 +183,11 @@ async function poll() {
 
   // Drop state for MRs that are no longer open (merged/closed) or no longer eligible.
   for (const iid of Object.keys(state)) {
-    if (iid === 'mineComments') continue;
+    if (iid === 'mineComments' || iid === 'stackBelow') continue;
     if (!seenReviewIids.has(iid)) delete state[iid];
+  }
+  for (const iid of Object.keys(state.stackBelow)) {
+    if (!seenReviewIids.has(iid)) delete state.stackBelow[iid];
   }
   for (const iid of Object.keys(state.mineComments)) {
     if (!seenMineIids.has(iid)) delete state.mineComments[iid];

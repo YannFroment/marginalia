@@ -111,6 +111,23 @@ has changed since the last pass (new commit, or MR never seen before).
   MR instead of forcing it if that branch happens to be checked out somewhere
   else (e.g. your own working copy).
 
+### Stacked MRs
+
+An MR whose target branch is the source branch of another open MR is a layer of
+a stack (rebuilt from the open MR list on every poll). For these:
+
+- `ALLOWED_TARGET_BRANCHES` is checked against the branch the whole stack is
+  based on, so upper layers are not filtered out.
+- Layers are reviewed bottom to top, and each run gets the stack in its prompt:
+  the layer list, the existing reviews of the other layers, and the layers above
+  fetched locally (`refs/marginalia/stack/<iid>`) so it can check whether a later
+  layer settles an issue before reporting it. The review ends with an
+  `### Across layers` section (`- [settled-later|belongs-lower|assumes-upper !<iid>] <text>`).
+- A layer is re-reviewed when the layer below it gets new commits
+  (`state.json` keeps that commit under `stackBelow`).
+- The studio shows the stack above the review as a merge board.
+- Layers you authored yourself are not shown on the board (they go through triage).
+
 ### MRs authored by someone else (`GITLAB_USERNAME` doesn't match)
 
 - Runs `claude -p "/code-review MR !<iid>"` in the bot worktree. The command

@@ -12,6 +12,7 @@ import { TRIAGE_FILE_PREFIX } from '../lib/paths.mjs';
 import { loadPosted, savePosted } from '../lib/posted.mjs';
 import { postMergeRequestNote, postMergeRequestInlineNote, mergeRequestNoteExists } from '../lib/gitlab.mjs';
 import { loadSettings, saveSettings } from '../lib/settings.mjs';
+import { parseAcrossLayers } from '../lib/stack.mjs';
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), 'dist');
 const SLUG_RE = /^[\w.-]+$/;
@@ -121,6 +122,26 @@ async function reconcilePosted() {
   await run.catch(() => {});
 }
 
+// Stacks of 2+ MRs from status.json, layers bottom to top. A layer without a
+// review file yet has slug null.
+function buildStacks(status) {
+  const byId = new Map();
+  for (const mr of status?.mrs ?? []) {
+    if (mr.kind !== 'review' || !mr.stack) continue;
+    if (!byId.has(mr.stack.id)) byId.set(mr.stack.id, { id: mr.stack.id, baseBranch: mr.stack.baseBranch, layers: [] });
+    byId.get(mr.stack.id).layers.push({
+      iid: mr.iid,
+      title: mr.title,
+      webUrl: mr.web_url,
+      slug: mr.reviewPath ? mr.reviewPath.split('/').pop().replace(/\.md$/, '') : null,
+      status: mr.status,
+      parentIid: mr.stack.parentIid,
+      position: mr.stack.position,
+    });
+  }
+  return [...byId.values()].map((st) => ({ ...st, layers: st.layers.sort((a, b) => a.position - b.position) }));
+}
+
 async function listReviews() {
   await reconcilePosted();
   const status = await readStatus();
@@ -150,6 +171,10 @@ async function listReviews() {
       important: countBullets(md, /important/i),
       summary: extractSummary(md),
       highlights: extractHighlights(md),
+      stackId: mr?.stack?.id ?? null,
+      crossLayer: parseAcrossLayers(md),
+      // Reviewed before, but the commit (or the layer below) moved since.
+      stale: mr?.status === 'pending' && Boolean(mr?.reviewedAt),
       mtime: st.mtime.toISOString(),
       reviewedAt: mr?.reviewedAt ?? st.mtime.toISOString(),
       tracked: Boolean(mr),
@@ -158,7 +183,7 @@ async function listReviews() {
   items.sort((a, b) => b.reviewedAt.localeCompare(a.reviewedAt));
   // https://host/group/project, from any tracked MR url; used to link !123 and file paths.
   const projectUrl = (status?.mrs ?? []).map((mr) => mr.web_url?.match(/^(.*)\/-\/merge_requests\/\d+/)?.[1]).find(Boolean) ?? null;
-  return { status, items, projectUrl, settings: loadSettings(), allowPosting: ALLOW_POSTING === 'true', posted: await loadPosted() };
+  return { status, items, stacks: buildStacks(status), projectUrl, settings: loadSettings(), allowPosting: ALLOW_POSTING === 'true', posted: await loadPosted() };
 }
 
 const clients = new Set();

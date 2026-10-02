@@ -18,6 +18,31 @@ export interface ReviewItem {
   tracked: boolean;
   summary: string | null;
   highlights: { severity: 'critical' | 'important'; text: string }[];
+  stackId: string | null;
+  crossLayer: CrossFinding[];
+  stale: boolean;
+}
+
+export interface CrossFinding {
+  kind: 'settled-later' | 'belongs-lower' | 'assumes-upper';
+  iid: number; // the layer concerned
+  text: string;
+}
+
+export interface StackLayer {
+  iid: number;
+  title: string;
+  webUrl: string | null;
+  slug: string | null; // review file, which may not exist yet
+  status: string;
+  parentIid: number | null;
+  position: number;
+}
+
+export interface Stack {
+  id: string;
+  baseBranch: string;
+  layers: StackLayer[];
 }
 
 export interface BotStatus {
@@ -40,6 +65,7 @@ export interface PostedInfo {
 interface ReviewsPayload {
   status: BotStatus | null;
   items: ReviewItem[];
+  stacks: Stack[];
   projectUrl: string | null;
   settings: { pollIntervalMinutes: number };
   allowPosting: boolean;
