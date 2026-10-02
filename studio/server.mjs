@@ -11,6 +11,7 @@ import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING, POST_DRY_RUN } fr
 import { TRIAGE_FILE_PREFIX } from '../lib/paths.mjs';
 import { loadPosted, savePosted } from '../lib/posted.mjs';
 import { postMergeRequestNote, postMergeRequestInlineNote, mergeRequestNoteExists } from '../lib/gitlab.mjs';
+import { byPriorityThenDate } from '../lib/jira.mjs';
 import { loadSettings, saveSettings } from '../lib/settings.mjs';
 import { parseAcrossLayers } from '../lib/stack.mjs';
 
@@ -178,9 +179,10 @@ async function listReviews() {
       mtime: st.mtime.toISOString(),
       reviewedAt: mr?.reviewedAt ?? st.mtime.toISOString(),
       tracked: Boolean(mr),
+      jira: mr?.jira ?? null,
     };
   }));
-  items.sort((a, b) => b.reviewedAt.localeCompare(a.reviewedAt));
+  items.sort(byPriorityThenDate);
   // https://host/group/project, from any tracked MR url; used to link !123 and file paths.
   const projectUrl = (status?.mrs ?? []).map((mr) => mr.web_url?.match(/^(.*)\/-\/merge_requests\/\d+/)?.[1]).find(Boolean) ?? null;
   return { status, items, stacks: buildStacks(status), projectUrl, settings: loadSettings(), allowPosting: ALLOW_POSTING === 'true', postDryRun: POST_DRY_RUN === 'true', posted: await loadPosted() };
