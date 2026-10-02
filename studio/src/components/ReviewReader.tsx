@@ -125,8 +125,10 @@ const SourceContext = createContext('');
 const COMMENT_LABEL = /^comment to post\s*:?$/i;
 
 // Nothing is sent until "Post comment" is clicked here, with the final text.
-function ConfirmPost({ iid, text, target, onCancel, onConfirm, fallbackRef }: { iid: string | number; text: string; target: { path: string; line?: number } | null; onCancel: () => void; onConfirm: () => Promise<void>; fallbackRef: RefObject<HTMLElement | null> }) {
+function ConfirmPost({ iid, text, target, onCancel, onConfirm, fallbackRef }: { iid: string | number; text: string; target: { path: string; line?: number } | null; onCancel: () => void; onConfirm: (text: string) => Promise<void>; fallbackRef: RefObject<HTMLElement | null> }) {
   const [busy, setBusy] = useState(false);
+  // Last look before posting: the text can still be fixed here.
+  const [draft, setDraft] = useState(text);
   const dialogRef = useRef<HTMLDivElement>(null);
   useScrollLock(true);
   // Focus moves to Cancel (the safe choice), stays inside, and returns to the opener on close.
@@ -144,15 +146,23 @@ function ConfirmPost({ iid, text, target, onCancel, onConfirm, fallbackRef }: { 
         <p className="mt-1 text-sm text-fg-muted">
           {target ? <>Anchored on <code className="rounded bg-zinc-100 px-1 py-0.5 text-[0.85em] dark:bg-zinc-800">{target.path}{target.line ? `:${target.line}` : ''}</code> in the diff{target.line ? '' : ' (whole file)'}.</> : 'No file found above it: it will be a general comment.'}
         </p>
-        <pre id="confirm-post-text" tabIndex={0} aria-label="Comment text" className="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm dark:border-zinc-800 dark:bg-zinc-950">{text}</pre>
+        <textarea
+          id="confirm-post-text"
+          aria-label="Comment text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          disabled={busy}
+          rows={Math.min(14, Math.max(4, draft.split('\n').length + 1))}
+          className="mt-3 max-h-64 w-full resize-y rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm leading-relaxed outline-none focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/50 dark:border-zinc-800 dark:bg-zinc-950"
+        />
         <div className="mt-4 flex justify-end gap-2">
           <button data-autofocus disabled={busy} onClick={onCancel} className="touch-target rounded-lg border border-zinc-200 px-3 py-1.5 text-sm hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Cancel</button>
           <button
-            disabled={busy}
+            disabled={busy || !draft.trim()}
             onClick={async () => {
               setBusy(true);
               try {
-                await onConfirm();
+                await onConfirm(draft);
               } catch (e) {
                 toast.error('Could not post the comment', { description: (e as Error).message });
                 setBusy(false);
@@ -263,8 +273,10 @@ function Quote({ children, offset }: { children?: ReactNode; offset?: number }) 
           target={target}
           fallbackRef={rootRef}
           onCancel={() => setConfirming(false)}
-          onConfirm={async () => {
-            const posted = await postComment(post.slug!, commentId, current, target ?? undefined);
+          onConfirm={async (text) => {
+            // A fix made in the dialog is kept like an edit, so the card shows what was posted.
+            if (text !== current) update(text);
+            const posted = await postComment(post.slug!, commentId, text, target ?? undefined);
             setConfirming(false);
             post.reload();
             if (target && posted.inline === false) toast.warning('Could not anchor it to the diff, posted as a general comment');
