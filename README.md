@@ -110,6 +110,10 @@ has changed since the last pass (new commit, or MR never seen before).
   Before each review/triage, checks out the MR's branch there — skipping the
   MR instead of forcing it if that branch happens to be checked out somewhere
   else (e.g. your own working copy).
+- With `MR_WORKTREES_DIR` set, there is no shared bot worktree: each MR is
+  worked on in its own folder. Your own worktree for the MR's branch is used
+  as it is; otherwise the bot keeps `review-<iid>` there, synced to the MR's
+  head before each run and removed once the MR is merged or closed.
 
 ### Stacked MRs
 

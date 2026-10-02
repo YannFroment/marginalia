@@ -15,6 +15,7 @@ import { loadSettings, saveSettings } from '../lib/settings.mjs';
 import { parseAcrossLayers } from '../lib/stack.mjs';
 import { appendRun, lastSessionByMr } from '../lib/runlog.mjs';
 import { createChats } from '../lib/chat.mjs';
+import { perMrWorktrees, listWorktrees, existingWorktree, mrWorktree } from '../lib/mr-worktree.mjs';
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), 'dist');
 const SLUG_RE = /^[\w.-]+$/;
@@ -149,6 +150,8 @@ async function listReviews() {
   const status = await readStatus();
   const byPath = new Map((status?.mrs ?? []).map((mr) => [mr.reviewPath, mr]));
   const sessions = await lastSessionByMr();
+  const worktrees = perMrWorktrees ? await listWorktrees() : [];
+  const workdirOf = (mr) => (perMrWorktrees ? existingWorktree(mr, worktrees)?.path : BOT_WORKTREE_DIR);
   let names = [];
   try {
     names = (await readdir(REVIEWS_DIR)).filter((n) => n.endsWith('.md'));
@@ -181,7 +184,7 @@ async function listReviews() {
       mtime: st.mtime.toISOString(),
       reviewedAt: mr?.reviewedAt ?? st.mtime.toISOString(),
       // Resumes the Claude session of the latest run on this MR, where it ran.
-      resumeCommand: mr && sessions[mr.iid] ? `cd ${JSON.stringify(BOT_WORKTREE_DIR)} && claude --resume ${sessions[mr.iid]}` : null,
+      resumeCommand: mr && sessions[mr.iid] && workdirOf(mr) ? `cd ${JSON.stringify(workdirOf(mr))} && claude --resume ${sessions[mr.iid]}` : null,
       tracked: Boolean(mr),
     };
   }));
@@ -326,7 +329,8 @@ async function postComment(req, res) {
 }
 
 // Chat with the bot about one review, as in a terminal: one Claude stays open
-// per review (lib/chat.mjs), resumed from the latest run's session. POST sends
+// per review (lib/chat.mjs), resumed from the latest run's session, in the
+// MR's folder when there is one per MR. POST sends
 // a message, the page follows the answers on GET /api/chat/stream (SSE).
 // Read-only tools only: nothing is committed or posted.
 const CHAT_PROMPT = [
@@ -352,7 +356,8 @@ async function chatTarget(slug) {
   if (!mr) return { error: [404, 'no tracked merge request for this review'] };
   const sessionId = (await lastSessionByMr())[mr.iid];
   if (!sessionId) return { error: [409, 'no bot session to resume for this MR yet'] };
-  return { mr, sessionId };
+  const cwd = perMrWorktrees ? (await mrWorktree(mr)).path : BOT_WORKTREE_DIR;
+  return { mr, sessionId, cwd };
 }
 
 async function chat(req, res) {
@@ -360,9 +365,9 @@ async function chat(req, res) {
   if (input === null) return undefined;
   const { slug, message } = input;
   if (typeof message !== 'string' || !message.trim() || message.length > 4000) return json(res, 400, { error: 'message must be a non-empty string under 4000 characters' });
-  const { mr, sessionId, error } = await chatTarget(slug);
+  const { mr, sessionId, cwd, error } = await chatTarget(slug);
   if (error) return json(res, error[0], { error: error[1] });
-  return json(res, 202, { pending: chats.send(slug, sessionId, { iid: mr.iid }, message.trim()) });
+  return json(res, 202, { pending: chats.send(slug, sessionId, { iid: mr.iid, cwd }, message.trim()) });
 }
 
 function chatStream(req, res, slug) {
