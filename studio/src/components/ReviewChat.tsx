@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, Loader2, MessageSquare, Send, ShieldQuestion } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2, MessageSquare, Send, ShieldQuestion, X } from 'lucide-react';
 import { answerChatPermission, chatEvents, sendChat, type ChatAsk } from '../lib/api';
+import { questionAbout, type CommentRef } from '../lib/comments';
 import { cn } from '../lib/utils';
 
-type Message = { role: 'you' | 'bot'; text: string; error?: boolean };
+type Message = { role: 'you' | 'bot'; text: string; error?: boolean; about?: number | null };
 
 const historyKey = (slug: string) => `marginalia:chat:${slug}`;
 const loadHistory = (slug: string): Message[] => {
@@ -16,7 +17,7 @@ const loadHistory = (slug: string): Message[] => {
 
 // Ask the bot about this review: each message resumes the Claude session of
 // the latest run on the MR, so it answers with everything it read.
-export function ReviewChat({ slug }: { slug: string }) {
+export function ReviewChat({ slug, about = null, onClearAbout = () => {} }: { slug: string; about?: CommentRef | null; onClearAbout?: () => void }) {
   const [messages, setMessages] = useState<Message[]>(() => loadHistory(slug));
   const [draft, setDraft] = useState('');
   const [steps, setSteps] = useState<string[]>([]);
@@ -25,6 +26,17 @@ export function ReviewChat({ slug }: { slug: string }) {
   const logRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(true);
   const [asks, setAsks] = useState<ChatAsk[]>([]);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Asking about a comment opens the chat under it, ready to type.
+  useEffect(() => {
+    if (!about) return;
+    setOpen(true);
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    requestAnimationFrame(() => {
+      inputRef.current?.focus({ preventScroll: true });
+      inputRef.current?.scrollIntoView({ block: 'nearest', behavior: calm ? 'auto' : 'smooth' });
+    });
+  }, [about]);
 
   useEffect(() => {
     setMessages(loadHistory(slug));
@@ -64,9 +76,9 @@ export function ReviewChat({ slug }: { slug: string }) {
     const text = draft.trim();
     if (!text) return;
     setDraft('');
-    setMessages((m) => [...m, { role: 'you', text }]);
+    setMessages((m) => [...m, { role: 'you', text, about: about ? about.number : undefined }]);
     try {
-      await sendChat(slug, text);
+      await sendChat(slug, about ? questionAbout(about, text) : text);
     } catch (e) {
       setMessages((m) => [...m, { role: 'bot', text: (e as Error).message, error: true }]);
     }
@@ -84,7 +96,7 @@ export function ReviewChat({ slug }: { slug: string }) {
   return (
     <section aria-label="Ask the bot" className="not-prose mt-6 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="mb-2 flex w-full items-center gap-2 text-left text-sm font-semibold">
-        <MessageSquare className="size-4" aria-hidden />Ask the bot about this review
+        <MessageSquare className="size-4" aria-hidden />Ask the bot about {about ? (about.number ? `comment #${about.number}` : 'this comment') : 'this review'}
         {messages.length > 0 && <span className="text-xs font-normal text-fg-muted">({messages.length})</span>}
         {open ? <ChevronDown className="ml-auto size-4" aria-hidden /> : <ChevronUp className="ml-auto size-4" aria-hidden />}
       </button>
@@ -92,7 +104,10 @@ export function ReviewChat({ slug }: { slug: string }) {
         <div ref={logRef} className={cn('mb-2 space-y-3 overflow-y-auto pr-1', messages.length || busy || asks.length ? 'h-[40vh]' : 'hidden')} aria-live="polite">
           {messages.map((m, i) => (
             <div key={i} className={cn('whitespace-pre-wrap rounded-lg px-3 py-2 text-sm', m.role === 'you' ? 'ml-8 bg-blue-500/10' : 'mr-8 bg-zinc-500/10', m.error && 'text-red-600 dark:text-red-400')}>
-              <span className="mb-0.5 block text-xs font-medium text-fg-muted">{m.role === 'you' ? 'You' : 'Bot'}</span>
+              <span className="mb-0.5 block text-xs font-medium text-fg-muted">
+                {m.role === 'you' ? 'You' : 'Bot'}
+                {m.about !== undefined && ` · about ${m.about ? `comment #${m.about}` : 'a comment'}`}
+              </span>
               {m.text}
             </div>
           ))}
@@ -117,6 +132,16 @@ export function ReviewChat({ slug }: { slug: string }) {
           )}
         </div>
       )}
+      {about && (
+        <p className="mb-1.5 flex items-center gap-1 text-xs">
+          <span className="rounded-full bg-blue-500/10 px-2 py-0.5 font-medium text-blue-700 ring-1 ring-inset ring-blue-500/30 dark:text-blue-300">
+            About {about.number ? `comment #${about.number}` : 'this comment'}
+          </span>
+          <button type="button" onClick={onClearAbout} aria-label="Ask about the whole review instead" title="Ask about the whole review instead" className="touch-target inline-flex items-center justify-center rounded-md p-1 text-fg-muted hover:bg-zinc-500/10">
+            <X className="size-3.5" aria-hidden />
+          </button>
+        </p>
+      )}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -127,6 +152,7 @@ export function ReviewChat({ slug }: { slug: string }) {
         <label htmlFor={`chat-${slug}`} className="sr-only">Your question</label>
         <textarea
           id={`chat-${slug}`}
+          ref={inputRef}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -136,7 +162,7 @@ export function ReviewChat({ slug }: { slug: string }) {
             }
           }}
           rows={2}
-          placeholder="Why is this a blocker? Can you check the B2B flow too?"
+          placeholder={about ? 'Why this comment? Is it really a blocker?' : 'Why is this a blocker? Can you check the B2B flow too?'}
           className="min-h-[2.5rem] flex-1 resize-y rounded-md border border-zinc-300 bg-white p-2 text-sm outline-none focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/50 dark:border-zinc-700 dark:bg-zinc-900"
         />
         <button type="submit" disabled={!draft.trim()} className="touch-target inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50">
