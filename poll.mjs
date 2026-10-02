@@ -14,6 +14,7 @@ import { reviewOutputPath, mrCommentsOutputPath, mtimeOrNull } from './lib/paths
 import { ensureBotWorktree } from './lib/worktree.mjs';
 import { runReview, runMrComments, runDeepen, runQa } from './lib/claude-runner.mjs';
 import { analyzeStacks } from './lib/stack.mjs';
+import { perMrWorktrees, ownedIids, removeOwned } from './lib/mr-worktree.mjs';
 
 async function poll() {
   const ts = timestamp();
@@ -65,6 +66,7 @@ async function poll() {
       title: mr.title,
       web_url: mr.web_url,
       author: mr.author.username,
+      source_branch: mr.source_branch,
       kind: 'review',
       status: isCurrent(mr) ? 'up_to_date' : 'pending',
       targetBranch: mr.target_branch,
@@ -81,6 +83,7 @@ async function poll() {
       title: mr.title,
       web_url: mr.web_url,
       author: mr.author.username,
+      source_branch: mr.source_branch,
       kind: 'comments',
       // No peer comment at all counts as "up to date": there is nothing to triage yet.
       status: peerCommentAt === null || state.mineComments[mr.iid] === peerCommentAt ? 'up_to_date' : 'pending',
@@ -197,7 +200,22 @@ async function poll() {
     if (!seenMineIids.has(iid)) delete state.mineComments[iid];
   }
   await saveState(state);
+  await removeFinishedWorktrees();
   console.log(`${timestamp()} ${c.dim}Poll done. Next one in ${loadSettings().pollIntervalMinutes} minute(s).${c.reset}`);
+}
+
+// A bot-owned MR folder goes once GitLab says the MR is merged or closed.
+// Open but filtered MRs (draft, stale) keep theirs.
+async function removeFinishedWorktrees() {
+  for (const iid of await ownedIids()) {
+    try {
+      const mr = await gitlabRequest(`/projects/${encodedProjectId}/merge_requests/${iid}`);
+      if (mr.state !== 'merged' && mr.state !== 'closed') continue;
+      if (await removeOwned(mr)) console.log(`${timestamp()} ${mrTag(mr)} ${mr.state}: its review folder was removed.`);
+    } catch (err) {
+      console.log(`${timestamp()} ${c.dim}[MR !${iid}] Could not clean its review folder: ${err.message}${c.reset}`);
+    }
+  }
 }
 
 const BANNER = [
@@ -364,7 +382,7 @@ async function main() {
   setActionHandler(requestAction);
   startStudio();
   watchSettings();
-  await ensureBotWorktree();
+  if (!perMrWorktrees) await ensureBotWorktree();
   // `kill -USR1 <pid>` (the menu bar's "Poll now") triggers a poll right away.
   process.on('SIGUSR1', runPoll);
   await runPoll();

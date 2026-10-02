@@ -113,6 +113,10 @@ has changed since the last pass (new commit, or MR never seen before).
   `BOT_CHECKOUT=detached`: the bot then checks out the MR's head without any
   local branch, so it never skips and never moves one of your branches
   (triage fixes still land on `marginalia/<branch-slug>`).
+- With `MR_WORKTREES_DIR` set, there is no shared bot worktree: each MR is
+  worked on in its own folder. Your own worktree for the MR's branch is used
+  as it is; otherwise the bot keeps `review-<iid>` there, synced to the MR's
+  head before each run and removed once the MR is merged or closed.
 
 ### Stacked MRs
 
