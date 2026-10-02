@@ -212,6 +212,12 @@ the flag the button doesn't exist and `POST /api/post` answers 403.
 The "Review ready" notification and the SwiftBar menu open the studio (the
 notification falls back to VS Code if the studio isn't listening).
 
+**Live progress and cost of each run.** Runs use `claude -p --output-format
+stream-json`. While a run is going, the studio shows its last steps above the
+review's details ("Opening …", "Reading …", the commands it runs). When it ends,
+its cost, output tokens and turns are logged and appended to `runs.jsonl`
+(gitignored), so you can see what each pass really costs.
+
 ## Keeping the script running
 
 For it to survive a restart / a closed terminal, use a process manager, for

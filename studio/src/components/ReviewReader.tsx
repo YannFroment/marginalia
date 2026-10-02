@@ -18,7 +18,7 @@ import { usePersistentState } from '../lib/layout';
 import { useModalFocus } from '../lib/useModalFocus';
 import { createContext } from 'react';
 import { Check, ChevronRight, Copy, ExternalLink, Loader2, PanelRight, Pencil, Send, Sparkles, Undo2 } from 'lucide-react';
-import { postComment, type PostedInfo, type ReviewItem } from '../lib/api';
+import { postComment, type BotStatus, type PostedInfo, type ReviewItem } from '../lib/api';
 import { cn, timeAgo } from '../lib/utils';
 import { VerdictBadge } from './VerdictBadge';
 import { LinkContext, commentLocation, linkify, linkifyCode, type LinkContextValue } from '../lib/links';
@@ -346,7 +346,28 @@ function Md({ children, semantic }: { children: string; semantic: boolean }) {
   );
 }
 
-export function ReviewReader({ item, markdown, projectUrl, allowPosting, postDryRun, posted, reload }: { item: ReviewItem | undefined; markdown: string | null; projectUrl: string | null; allowPosting: boolean; postDryRun: boolean; posted: Record<string, PostedInfo>; reload: () => void }) {
+// What the run is doing right now, for the MR on screen.
+function LiveRun({ live }: { live: NonNullable<BotStatus['current']> }) {
+  const steps = live.progress ?? [];
+  return (
+    <section aria-live="polite">
+      <h2 className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-fg-muted">
+        <Loader2 className="size-3 animate-spin motion-reduce:animate-pulse" aria-hidden />Running now
+      </h2>
+      {steps.length ? (
+        <ol className="space-y-1 text-xs text-fg-muted">
+          {steps.map((s, i) => (
+            <li key={`${i}-${s}`} className={cn('break-words', i === steps.length - 1 && 'font-medium text-zinc-900 dark:text-zinc-100')}>{s}</li>
+          ))}
+        </ol>
+      ) : (
+        <p className="text-xs text-fg-muted">Starting…</p>
+      )}
+    </section>
+  );
+}
+
+export function ReviewReader({ item, markdown, projectUrl, allowPosting, postDryRun, live, posted, reload }: { item: ReviewItem | undefined; markdown: string | null; projectUrl: string | null; allowPosting: boolean; postDryRun: boolean; live: BotStatus['current']; posted: Record<string, PostedInfo>; reload: () => void }) {
   const postCtx = useMemo(() => ({ allowPosting, postDryRun, slug: item?.slug ?? null, iid: item?.tracked ? item.iid : null, posted, reload }), [allowPosting, postDryRun, item?.slug, item?.tracked, item?.iid, posted, reload]);
   const linkCtx = useMemo(() => ({ projectUrl, branch: item?.branch ?? null, mrWebUrl: item?.webUrl ?? null }), [projectUrl, item?.branch, item?.webUrl]);
   const { intro, sections } = useMemo(() => splitSections(markdown ?? ''), [markdown]);
@@ -440,6 +461,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, postDry
             className={cn('sticky top-[calc(var(--chrome-h)+1rem)] hidden h-[calc(100vh-var(--chrome-h)-2rem)] shrink-0 self-start overflow-hidden transition-[width,opacity] duration-300 ease-out motion-reduce:transition-none lg:block', panelOpen ? 'w-64 opacity-100' : 'w-0 opacity-0')}
           >
             <div className="flex h-full w-64 flex-col gap-5 overflow-y-auto pr-1 text-sm">
+              {live && <LiveRun live={live} />}
               <section>
                 <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-fg-muted">Details</h2>
                 <dl className="space-y-1.5">
