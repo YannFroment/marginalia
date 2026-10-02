@@ -183,7 +183,8 @@ track several MRs across polls in the logs.
 (`STUDIO_PORT`, bound to `127.0.0.1`, read-only). Vite + React + Tailwind
 front end (`studio/`), served as static files by `studio/server.mjs`, which
 `poll.mjs` starts at boot. It lists reviews as cards (verdict, Critical /
-Important counts, unread dot), renders each one with a table of contents and
+Important counts, unread dot; most urgent Jira ticket first when `JIRA_*` is
+set in `.env`, newest first otherwise), renders each one with a table of contents and
 collapsible sections, has a copy button on the "Comment to post" blocks, and
 a `⌘K` search. It refreshes live when a review file or `status.json` changes.
 

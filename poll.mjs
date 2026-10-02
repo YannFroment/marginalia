@@ -9,6 +9,7 @@ import { loadState, saveState } from './lib/state.mjs';
 import { status, writeStatus, setMrStatus } from './lib/status.mjs';
 import { notify } from './lib/notify.mjs';
 import { listOpenMergeRequests, reviewFileCoversLastPush, latestPeerCommentAt } from './lib/gitlab.mjs';
+import { jiraPriorityOf } from './lib/jira.mjs';
 import { reviewOutputPath, mrCommentsOutputPath, mtimeOrNull } from './lib/paths.mjs';
 import { ensureBotWorktree } from './lib/worktree.mjs';
 import { runReview, runMrComments } from './lib/claude-runner.mjs';
@@ -57,6 +58,7 @@ async function poll() {
   // written by hand or before this field existed get a date too.
   const reviewedAts = await Promise.all(reviewMrs.map((mr) => mtimeOrNull(reviewOutputPath(mr))));
   const triagedAts = await Promise.all(myMrs.map((mr) => mtimeOrNull(mrCommentsOutputPath(mr))));
+  const jiras = await Promise.all(reviewMrs.map((mr) => jiraPriorityOf(mr)));
   status.mrs = [
     ...reviewMrs.map((mr, i) => ({
       iid: mr.iid,
@@ -72,6 +74,7 @@ async function poll() {
       reviewedAt: reviewedAts[i] === null ? null : new Date(reviewedAts[i]).toISOString(),
       error: null,
       updatedAt: mr.updated_at,
+      jira: jiras[i],
     })),
     ...myMrsWithSignal.map(({ mr, peerCommentAt }, i) => ({
       iid: mr.iid,
