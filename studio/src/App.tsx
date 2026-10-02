@@ -16,6 +16,8 @@ const ReviewReader = lazy(() => loadReader().then((m) => ({ default: m.ReviewRea
 import { CommandPalette } from './components/CommandPalette';
 
 const EMPTY_POSTED = {};
+// Reviews older than this are hidden from the Home grid and its counters.
+const STALE_DAYS = 30;
 const SIZE_KEY = 'mr-review-viewer:card-size';
 const SIZES: { value: CardSize; label: string; Icon: typeof Grid3x3 }[] = [
   { value: 'small', label: 'Small cards', Icon: Grid3x3 },
@@ -172,15 +174,18 @@ export function App() {
     return () => document.removeEventListener('keydown', onKey);
   });
 
+  // Old MRs are noise on Home; they stay reachable from the sidebar, tabs and palette.
+  const fresh = useMemo(() => items.filter((i) => Date.now() - new Date(i.reviewedAt).getTime() < STALE_DAYS * 86_400_000), [items]);
+
   const visible = useMemo(() => {
-    return items.filter((i) => {
+    return fresh.filter((i) => {
       if (i.kind !== tab) return false;
       if (filter === 'changes') return i.verdict === 'REQUEST_CHANGES';
       if (filter === 'unread') return isUnread(i);
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, tab, filter, seen]);
+  }, [fresh, tab, filter, seen]);
 
   // Unread first, then already-read, each under a heading so a long queue
   // shows at a glance what still needs a look. Stable sort keeps the API order.
@@ -188,10 +193,10 @@ export function App() {
   const unreadVisible = ordered.filter(isUnread).length;
   const sectioned = unreadVisible > 0 && unreadVisible < ordered.length;
 
-  const unreadCount = items.filter((i) => i.kind !== 'retro' && isUnread(i)).length;
+  const unreadCount = fresh.filter((i) => i.kind !== 'retro' && isUnread(i)).length;
 
   // Counters follow the selected tab (Reviews / Triage).
-  const scoped = items.filter((i) => i.kind === tab);
+  const scoped = fresh.filter((i) => i.kind === tab);
   const counts = {
     changes: scoped.filter((i) => i.verdict === 'REQUEST_CHANGES').length,
     unread: scoped.filter(isUnread).length,

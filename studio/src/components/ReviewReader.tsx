@@ -116,9 +116,13 @@ interface PostContextValue {
   iid: string | number | null;
   posted: Record<string, PostedInfo>;
   reload: () => void;
-  markdown: string;
 }
-const PostContext = createContext<PostContextValue>({ allowPosting: false, slug: null, iid: null, posted: {}, reload: () => {}, markdown: '' });
+const PostContext = createContext<PostContextValue>({ allowPosting: false, slug: null, iid: null, posted: {}, reload: () => {} });
+// The markdown a blockquote's `position.start.offset` refers to (one section body, not the whole review).
+const SourceContext = createContext('');
+
+// The "**Comment to post:**" line before a blockquote: the card already carries that label.
+const COMMENT_LABEL = /^comment to post\s*:?$/i;
 
 // Nothing is sent until "Post comment" is clicked here, with the final text.
 function ConfirmPost({ iid, text, target, onCancel, onConfirm, fallbackRef }: { iid: string | number; text: string; target: { path: string; line?: number } | null; onCancel: () => void; onConfirm: () => Promise<void>; fallbackRef: RefObject<HTMLElement | null> }) {
@@ -174,15 +178,16 @@ function Quote({ children, offset }: { children?: ReactNode; offset?: number }) 
   const [editing, setEditing] = useState(false);
   const current = edited ?? ref.current?.innerText.trim() ?? original;
   const post = useContext(PostContext);
+  const source = useContext(SourceContext);
   const commentId = key.split(':').pop() ?? '';
   const postedInfo = post.slug ? post.posted[`${post.slug}:${commentId}`] : undefined;
   const [confirming, setConfirming] = useState(false);
   // The file:line the review mentions just above this comment, since the last heading.
   const target = useMemo(() => {
     if (offset === undefined) return null;
-    const above = post.markdown.slice(0, offset);
+    const above = source.slice(0, offset);
     return commentLocation(above.slice(Math.max(above.lastIndexOf('\n#'), 0)));
-  }, [post.markdown, offset]);
+  }, [source, offset]);
   // Focus lands here if the button that opened the dialog is gone (a posted comment replaces it).
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -303,7 +308,7 @@ function enrich(children: ReactNode, semantic: boolean, ctx: LinkContextValue): 
 function makeComponents(semantic: boolean, ctx: LinkContextValue): Components {
   const wrap = (children: ReactNode) => enrich(children, semantic, ctx);
   return {
-    p: ({ children }) => <p>{wrap(children)}</p>,
+    p: ({ children }) => (COMMENT_LABEL.test(textOf(children).trim()) ? null : <p>{wrap(children)}</p>),
     li: ({ children }) => <li>{wrap(children)}</li>,
     td: ({ children }) => <td>{wrap(children)}</td>,
     strong: ({ children }) => <strong>{wrap(children)}</strong>,
@@ -325,16 +330,18 @@ function Md({ children, semantic }: { children: string; semantic: boolean }) {
   const ctx = useContext(LinkContext);
   const components = useMemo(() => makeComponents(semantic, ctx), [semantic, ctx]);
   return (
+    <SourceContext.Provider value={children}>
     <div className={cn('prose prose-zinc max-w-none [overflow-wrap:anywhere] prose-headings:tracking-tight prose-code:before:content-none prose-code:after:content-none prose-code:rounded prose-code:bg-zinc-100 prose-code:px-1 prose-code:py-0.5 prose-code:text-[0.85em] prose-code:font-normal dark:prose-invert dark:prose-code:bg-zinc-800 [&_pre_code]:bg-transparent [&_pre_code]:p-0', semantic && 'semfont')}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeHighlight, HIGHLIGHT]]} components={components}>
         {children}
       </ReactMarkdown>
     </div>
+    </SourceContext.Provider>
   );
 }
 
 export function ReviewReader({ item, markdown, projectUrl, allowPosting, posted, reload }: { item: ReviewItem | undefined; markdown: string | null; projectUrl: string | null; allowPosting: boolean; posted: Record<string, PostedInfo>; reload: () => void }) {
-  const postCtx = useMemo(() => ({ allowPosting, slug: item?.slug ?? null, iid: item?.tracked ? item.iid : null, posted, reload, markdown: markdown ?? '' }), [allowPosting, item?.slug, item?.tracked, item?.iid, posted, reload, markdown]);
+  const postCtx = useMemo(() => ({ allowPosting, slug: item?.slug ?? null, iid: item?.tracked ? item.iid : null, posted, reload }), [allowPosting, item?.slug, item?.tracked, item?.iid, posted, reload]);
   const linkCtx = useMemo(() => ({ projectUrl, branch: item?.branch ?? null, mrWebUrl: item?.webUrl ?? null }), [projectUrl, item?.branch, item?.webUrl]);
   const { intro, sections } = useMemo(() => splitSections(markdown ?? ''), [markdown]);
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
