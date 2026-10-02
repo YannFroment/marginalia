@@ -155,3 +155,29 @@ export async function postComment(slug: string, commentId: string, body: string,
   if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
   return j;
 }
+
+export type ChatLine = { type: 'step' | 'answer' | 'error'; text: string; costUsd?: number | null };
+
+// Sends one message to the bot about a review and streams its NDJSON reply.
+export async function sendChat(slug: string, message: string, onLine: (line: ChatLine) => void): Promise<void> {
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ slug, message }),
+  });
+  if (!res.ok || !res.body) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(j.error ?? `HTTP ${res.status}`);
+  }
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += value;
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const l of lines) if (l.trim()) onLine(JSON.parse(l));
+  }
+  if (buffer.trim()) onLine(JSON.parse(buffer));
+}

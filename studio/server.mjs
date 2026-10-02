@@ -7,13 +7,15 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { watch } from 'node:fs';
 import { join, dirname, extname, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING, BOT_WORKTREE_DIR } from '../lib/config.mjs';
+import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING, BOT_WORKTREE_DIR, CLAUDE_BIN, CLAUDE_ALLOWED_TOOLS } from '../lib/config.mjs';
 import { TRIAGE_FILE_PREFIX } from '../lib/paths.mjs';
 import { loadPosted, savePosted } from '../lib/posted.mjs';
 import { postMergeRequestNote, postMergeRequestInlineNote, mergeRequestNoteExists } from '../lib/gitlab.mjs';
 import { loadSettings, saveSettings } from '../lib/settings.mjs';
 import { parseAcrossLayers } from '../lib/stack.mjs';
-import { lastSessionByMr } from '../lib/runlog.mjs';
+import { appendRun, lastSessionByMr } from '../lib/runlog.mjs';
+import { runStreaming } from '../lib/progress.mjs';
+import { parseRunOutput } from '../lib/claude-runner.mjs';
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), 'dist');
 const SLUG_RE = /^[\w.-]+$/;
@@ -324,10 +326,51 @@ async function postComment(req, res) {
   return run;
 }
 
+// Chat with the bot about one review: each message resumes the Claude session
+// of the latest run on that MR, so the bot keeps everything it read. The
+// answer streams back as NDJSON lines: { type: 'step' | 'answer' | 'error' }.
+// One chat at a time, read-only tools only: nothing is committed or posted.
+let chatBusy = false;
+async function chat(req, res) {
+  const input = await readJsonBody(req, res);
+  if (input === null) return undefined;
+  const { slug, message } = input;
+  if (typeof slug !== 'string' || !SLUG_RE.test(slug)) return json(res, 400, { error: 'bad slug' });
+  if (typeof message !== 'string' || !message.trim() || message.length > 4000) return json(res, 400, { error: 'message must be a non-empty string under 4000 characters' });
+  const status = await readStatus();
+  const mr = (status?.mrs ?? []).find((m) => m.reviewPath && m.reviewPath === join(REVIEWS_DIR, `${slug}.md`));
+  if (!mr) return json(res, 404, { error: 'no tracked merge request for this review' });
+  const sessionId = (await lastSessionByMr())[mr.iid];
+  if (!sessionId) return json(res, 409, { error: 'no bot session to resume for this MR yet' });
+  if (chatBusy) return json(res, 409, { error: 'the bot is already answering another message' });
+  chatBusy = true;
+  res.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store' });
+  const send = (o) => res.write(`${JSON.stringify(o)}\n`);
+  const { ANTHROPIC_API_KEY: _unused, ...env } = process.env;
+  try {
+    const { stdout } = await runStreaming(
+      CLAUDE_BIN,
+      ['--resume', sessionId, '-p', message.trim(), '--output-format', 'stream-json', '--verbose', '--allowedTools', CLAUDE_ALLOWED_TOOLS.join(' ')],
+      { cwd: BOT_WORKTREE_DIR, env },
+      (step) => send({ type: 'step', text: step }),
+    );
+    const { text, stats } = parseRunOutput(stdout);
+    if (stats) await appendRun({ iid: mr.iid, kind: 'chat', command: 'chat', ...stats });
+    send({ type: 'answer', text, costUsd: stats?.costUsd ?? null });
+  } catch (err) {
+    send({ type: 'error', text: String(err.message).slice(0, 500) });
+  } finally {
+    chatBusy = false;
+    res.end();
+  }
+  return undefined;
+}
+
 async function handle(req, res) {
   const { pathname } = new URL(req.url, 'http://localhost');
   if (req.method === 'PUT' && pathname === '/api/settings') return putSettings(req, res);
   if (req.method === 'POST' && pathname === '/api/post') return postComment(req, res);
+  if (req.method === 'POST' && pathname === '/api/chat') return chat(req, res);
   if (req.method !== 'GET') return json(res, 405, { error: 'read-only' });
 
   if (pathname === '/api/reviews') return json(res, 200, await listReviews());

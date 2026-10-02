@@ -18,6 +18,7 @@ import { usePersistentState } from '../lib/layout';
 import { useModalFocus } from '../lib/useModalFocus';
 import { createContext } from 'react';
 import { Check, ChevronRight, Copy, ExternalLink, Loader2, PanelRight, Pencil, Send, Sparkles, Undo2, SquareTerminal } from 'lucide-react';
+import { ReviewChat } from './ReviewChat';
 import { postComment, type BotStatus, type PostedInfo, type ReviewItem } from '../lib/api';
 import { cn, timeAgo } from '../lib/utils';
 import { VerdictBadge } from './VerdictBadge';
@@ -462,6 +463,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, live, p
                 </Collapsible.Content>
               </Collapsible.Root>
             ))}
+            {item?.resumeCommand && <ReviewChat slug={item.slug} />}
           </article>
 
           {/* Side panel: context that stays visible while reading. Collapses to give the article the room. */}
