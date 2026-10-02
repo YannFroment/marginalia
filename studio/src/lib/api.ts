@@ -156,7 +156,17 @@ export async function postComment(slug: string, commentId: string, body: string,
   return j;
 }
 
-export type ChatEvent = { type: 'hello' | 'queued' | 'step' | 'answer' | 'error' | 'closed'; text?: string; costUsd?: number | null; pending: number };
+export type ChatAsk = { id: string; tool: string; input: Record<string, unknown>; description: string | null; reason: string | null };
+
+export type ChatEvent = {
+  type: 'hello' | 'queued' | 'step' | 'answer' | 'error' | 'closed' | 'permission' | 'permission_answered';
+  text?: string;
+  costUsd?: number | null;
+  pending: number;
+  ask?: ChatAsk;
+  asks?: ChatAsk[];
+  id?: string;
+};
 
 // Sends one message to the bot about a review; answers arrive on chatEvents().
 export async function sendChat(slug: string, message: string): Promise<void> {
@@ -164,6 +174,19 @@ export async function sendChat(slug: string, message: string): Promise<void> {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ slug, message }),
+  });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(j.error ?? `HTTP ${res.status}`);
+  }
+}
+
+// Allow or deny what the bot asked for, as the y/n of a terminal.
+export async function answerChatPermission(slug: string, id: string, allow: boolean): Promise<void> {
+  const res = await fetch('/api/chat/permission', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ slug, id, allow }),
   });
   if (!res.ok) {
     const j = await res.json().catch(() => ({}));
