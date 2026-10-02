@@ -70,6 +70,8 @@ interface ReviewsPayload {
   projectUrl: string | null;
   settings: { pollIntervalMinutes: number };
   allowPosting: boolean;
+  ideEnabled?: boolean;
+  diffInIdeEnabled?: boolean;
   posted: Record<string, PostedInfo>;
 }
 
@@ -150,6 +152,29 @@ export async function postComment(slug: string, commentId: string, body: string,
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ slug, commentId, body, ...target }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+  return j;
+}
+
+// Opens the file a comment is anchored on, in the MR's worktree, with IDE_COMMAND.
+export async function openInIde(slug: string, path: string, line: number): Promise<void> {
+  const res = await fetch('/api/open-in-ide', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ slug, path, line }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+}
+
+// Opens the MR's worktree in the IDE with the MR's changes shown as uncommitted.
+export async function showDiffInIde(slug: string): Promise<{ folder: string; owned: boolean }> {
+  const res = await fetch('/api/show-diff-in-ide', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ slug }),
   });
   const j = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);

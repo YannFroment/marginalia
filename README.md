@@ -72,7 +72,8 @@ the bot and the studio work without them):
 - `terminal-notifier` (`brew install terminal-notifier`): makes the "Review
   ready" notification clickable; without it you get a plain, non-clickable alert.
 - The VS Code CLI (`code`, on `PATH` or set `VSCODE_BIN`): fallback to open a
-  review when the studio isn't running.
+  review when the studio isn't running, and the "Open in IDE" button of a
+  comment anchored on a line (any other IDE through `IDE_COMMAND`).
 - The [SwiftBar](#menu-bar-icon-optional-macos) menu bar icon, a separate,
   entirely optional add-on.
 

@@ -5,17 +5,18 @@
 import { createServer } from 'node:http';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { watch } from 'node:fs';
-import { join, dirname, extname, normalize } from 'node:path';
+import { join, dirname, extname, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING, BOT_WORKTREE_DIR, CLAUDE_BIN, CLAUDE_ALLOWED_TOOLS } from '../lib/config.mjs';
-import { TRIAGE_FILE_PREFIX } from '../lib/paths.mjs';
+import { IDE_COMMAND, IDE_FOLDER_COMMAND, encodedProjectId, REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING, BOT_WORKTREE_DIR, CLAUDE_BIN, CLAUDE_ALLOWED_TOOLS } from '../lib/config.mjs';
+import { TRIAGE_FILE_PREFIX, fileExists } from '../lib/paths.mjs';
+import { execFileAsync } from '../lib/exec.mjs';
 import { loadPosted, savePosted } from '../lib/posted.mjs';
-import { postMergeRequestNote, postMergeRequestInlineNote, mergeRequestNoteExists } from '../lib/gitlab.mjs';
+import { gitlabRequest, postMergeRequestNote, postMergeRequestInlineNote, mergeRequestNoteExists } from '../lib/gitlab.mjs';
 import { loadSettings, saveSettings } from '../lib/settings.mjs';
 import { parseAcrossLayers } from '../lib/stack.mjs';
 import { appendRun, lastSessionByMr } from '../lib/runlog.mjs';
 import { createChats } from '../lib/chat.mjs';
-import { perMrWorktrees, listWorktrees, existingWorktree, mrWorktree } from '../lib/mr-worktree.mjs';
+import { perMrWorktrees, listWorktrees, existingWorktree, mrWorktree, uncommitOwned } from '../lib/mr-worktree.mjs';
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), 'dist');
 const SLUG_RE = /^[\w.-]+$/;
@@ -191,7 +192,7 @@ async function listReviews() {
   items.sort((a, b) => b.reviewedAt.localeCompare(a.reviewedAt));
   // https://host/group/project, from any tracked MR url; used to link !123 and file paths.
   const projectUrl = (status?.mrs ?? []).map((mr) => mr.web_url?.match(/^(.*)\/-\/merge_requests\/\d+/)?.[1]).find(Boolean) ?? null;
-  return { status, items, stacks: buildStacks(status), projectUrl, settings: loadSettings(), allowPosting: ALLOW_POSTING === 'true', posted: await loadPosted() };
+  return { status, items, stacks: buildStacks(status), projectUrl, settings: loadSettings(), allowPosting: ALLOW_POSTING === 'true', ideEnabled: Boolean(IDE_COMMAND.trim()), diffInIdeEnabled: perMrWorktrees && Boolean(IDE_FOLDER_COMMAND.trim()), posted: await loadPosted() };
 }
 
 const clients = new Set();
@@ -349,15 +350,67 @@ const chats = createChats({
   onAnswer: ({ iid, sessionId, costUsd, turns }) => appendRun({ iid, kind: 'chat', command: 'chat', sessionId, costUsd, turns }),
 });
 
-async function chatTarget(slug) {
+async function trackedMr(slug) {
   if (typeof slug !== 'string' || !SLUG_RE.test(slug)) return { error: [400, 'bad slug'] };
   const status = await readStatus();
   const mr = (status?.mrs ?? []).find((m) => m.reviewPath && m.reviewPath === join(REVIEWS_DIR, `${slug}.md`));
-  if (!mr) return { error: [404, 'no tracked merge request for this review'] };
+  return mr ? { mr } : { error: [404, 'no tracked merge request for this review'] };
+}
+
+async function chatTarget(slug) {
+  const { mr, error } = await trackedMr(slug);
+  if (error) return { error };
   const sessionId = (await lastSessionByMr())[mr.iid];
   if (!sessionId) return { error: [409, 'no bot session to resume for this MR yet'] };
   const cwd = perMrWorktrees ? (await mrWorktree(mr)).path : BOT_WORKTREE_DIR;
   return { mr, sessionId, cwd };
+}
+
+// Opens the file a comment is anchored on, in the MR's own worktree when
+// there is one per MR (else the shared bot worktree, which may hold another MR).
+async function openInIde(req, res) {
+  const input = await readJsonBody(req, res);
+  if (input === null) return undefined;
+  if (!IDE_COMMAND.trim()) return json(res, 403, { error: 'no IDE_COMMAND configured' });
+  const { slug, path, line } = input;
+  if (typeof path !== 'string' || !path || !Number.isInteger(line) || line < 1) return json(res, 400, { error: 'expected slug, path and line' });
+  const { mr, error } = await trackedMr(slug);
+  if (error) return json(res, error[0], { error: error[1] });
+  const folder = perMrWorktrees ? (await mrWorktree(mr)).path : BOT_WORKTREE_DIR;
+  const file = resolve(folder, path);
+  if (!file.startsWith(`${folder}${sep}`)) return json(res, 400, { error: 'path outside the worktree' });
+  if (!(await fileExists(file))) return json(res, 404, { error: `${path} does not exist in ${folder}` });
+  const fill = (arg) => arg.replaceAll('{folder}', folder).replaceAll('{file}', file).replaceAll('{line}', String(line));
+  const [bin, ...args] = IDE_COMMAND.trim().split(/\s+/).map(fill);
+  try {
+    await execFileAsync(bin, args);
+  } catch (err) {
+    return json(res, 502, { error: String(err.message).slice(0, 300) });
+  }
+  return json(res, 200, { ok: true, folder, file, line });
+}
+
+// Opens the MR's worktree with its changes shown as uncommitted, for the IDE's
+// source control view. Your own worktree is only opened: its commits are yours.
+async function showDiffInIde(req, res) {
+  const input = await readJsonBody(req, res);
+  if (input === null) return undefined;
+  if (!perMrWorktrees || !IDE_FOLDER_COMMAND.trim()) return json(res, 403, { error: 'needs MR_WORKTREES_DIR and IDE_FOLDER_COMMAND' });
+  const { mr, error } = await trackedMr(input.slug);
+  if (error) return json(res, error[0], { error: error[1] });
+  const status = await readStatus();
+  if (String(status?.current?.iid ?? '') === String(mr.iid)) return json(res, 409, { error: 'the bot is working in this MR folder right now, try again when it is done' });
+  try {
+    // The status only keeps a few fields: the sync needs the MR's target branch.
+    const full = await gitlabRequest(`/projects/${encodedProjectId}/merge_requests/${mr.iid}`);
+    const worktree = await mrWorktree(full);
+    if (worktree.owned) await uncommitOwned(worktree.path, full);
+    const [bin, ...args] = IDE_FOLDER_COMMAND.trim().split(/\s+/).map((arg) => arg.replaceAll('{folder}', worktree.path));
+    await execFileAsync(bin, args);
+    return json(res, 200, { folder: worktree.path, owned: worktree.owned });
+  } catch (err) {
+    return json(res, 502, { error: String(err.message).slice(0, 300) });
+  }
 }
 
 async function chat(req, res) {
@@ -384,6 +437,8 @@ async function handle(req, res) {
   if (req.method === 'PUT' && pathname === '/api/settings') return putSettings(req, res);
   if (req.method === 'POST' && pathname === '/api/post') return postComment(req, res);
   if (req.method === 'POST' && pathname === '/api/chat') return chat(req, res);
+  if (req.method === 'POST' && pathname === '/api/open-in-ide') return openInIde(req, res);
+  if (req.method === 'POST' && pathname === '/api/show-diff-in-ide') return showDiffInIde(req, res);
   if (req.method !== 'GET') return json(res, 405, { error: 'read-only' });
   if (pathname === '/api/chat/stream') return chatStream(req, res, new URL(req.url, 'http://localhost').searchParams.get('slug'));
 
