@@ -18,8 +18,8 @@ import { useScrollLock } from '../lib/useScrollLock';
 import { usePersistentState } from '../lib/layout';
 import { useModalFocus } from '../lib/useModalFocus';
 import { createContext } from 'react';
-import { Check, ChevronRight, Clock, Copy, ExternalLink, FlaskConical, Loader2, Microscope, PanelRight, Pencil, Send, Sparkles, Undo2, SquareTerminal, MessageSquare } from 'lucide-react';
-import { postComment, requestAction, type ActionKind, type BotStatus, type PostedInfo, type ReviewItem } from '../lib/api';
+import { Check, ChevronRight, Clock, Copy, ExternalLink, FlaskConical, Loader2, Microscope, PanelRight, Pencil, Send, Sparkles, Undo2, SquareTerminal, MessageSquare, Code2, GitCompare } from 'lucide-react';
+import { postComment, requestAction, type ActionKind, type BotStatus, type PostedInfo, type ReviewItem, openInIde, showDiffInIde } from '../lib/api';
 import type { BotState } from './TabIcon';
 import { ReviewChat } from './ReviewChat';
 import { cn, timeAgo } from '../lib/utils';
@@ -117,12 +117,13 @@ const writeEdit = (key: string, value: string | null) => {
 interface PostContextValue {
   allowPosting: boolean;
   postDryRun: boolean;
+  ideEnabled: boolean;
   slug: string | null;
   iid: string | number | null;
   posted: Record<string, PostedInfo>;
   reload: () => void;
 }
-const PostContext = createContext<PostContextValue>({ allowPosting: false, postDryRun: false, slug: null, iid: null, posted: {}, reload: () => {} });
+const PostContext = createContext<PostContextValue>({ allowPosting: false, postDryRun: false, ideEnabled: false, slug: null, iid: null, posted: {}, reload: () => {} });
 // The markdown a blockquote's `position.start.offset` refers to (one section body, not the whole review).
 const SourceContext = createContext('');
 
@@ -204,6 +205,7 @@ function Quote({ children, offset, number }: { children?: ReactNode; offset?: nu
     const above = source.slice(0, offset);
     return commentLocation(above.slice(Math.max(above.lastIndexOf('\n#'), 0)));
   }, [source, offset]);
+  const [opening, setOpening] = useState(false);
   // Focus lands here if the button that opened the dialog is gone (a posted comment replaces it).
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -250,6 +252,27 @@ function Quote({ children, offset, number }: { children?: ReactNode; offset?: nu
             {editing ? 'Done' : 'Edit'}
           </button>
           <CopyButton label="Copy" getText={() => current} />
+          {post.ideEnabled && post.slug && post.iid && target?.line && (
+            <button
+              onClick={async () => {
+                setOpening(true);
+                try {
+                  await openInIde(post.slug!, target.path, target.line!);
+                } catch (e) {
+                  toast.error('Could not open the IDE', { description: (e as Error).message });
+                } finally {
+                  setOpening(false);
+                }
+              }}
+              disabled={opening}
+              aria-busy={opening}
+              title={`Opens ${target.path}:${target.line} in your IDE, in the MR's worktree`}
+              className="touch-target inline-flex items-center justify-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+            >
+              {opening ? <Loader2 className="size-3.5 animate-spin motion-reduce:animate-pulse" aria-hidden /> : <Code2 className="size-3.5" aria-hidden />}
+              {opening ? 'Opening…' : 'Open in IDE'}
+            </button>
+          )}
           {chat.available && (
             <button
               onClick={() => chat.askAbout({ id: commentId, number, text: current })}
@@ -445,8 +468,8 @@ function LiveRun({ live }: { live: NonNullable<BotStatus['current']> }) {
   );
 }
 
-export function ReviewReader({ item, markdown, projectUrl, allowPosting, postDryRun, deepenEnabled, qaEnabled, botState, live, posted, reload }: { item: ReviewItem | undefined; markdown: string | null; projectUrl: string | null; allowPosting: boolean; postDryRun: boolean; deepenEnabled: boolean; qaEnabled: boolean; botState: BotState; live: BotStatus['current']; posted: Record<string, PostedInfo>; reload: () => void }) {
-  const postCtx = useMemo(() => ({ allowPosting, postDryRun, slug: item?.slug ?? null, iid: item?.tracked ? item.iid : null, posted, reload }), [allowPosting, postDryRun, item?.slug, item?.tracked, item?.iid, posted, reload]);
+export function ReviewReader({ item, markdown, projectUrl, allowPosting, postDryRun, ideEnabled, diffInIdeEnabled, deepenEnabled, qaEnabled, botState, live, posted, reload }: { item: ReviewItem | undefined; markdown: string | null; projectUrl: string | null; allowPosting: boolean; postDryRun: boolean; ideEnabled: boolean; diffInIdeEnabled: boolean; deepenEnabled: boolean; qaEnabled: boolean; botState: BotState; live: BotStatus['current']; posted: Record<string, PostedInfo>; reload: () => void }) {
+  const postCtx = useMemo(() => ({ allowPosting, postDryRun, ideEnabled, slug: item?.slug ?? null, iid: item?.tracked ? item.iid : null, posted, reload }), [allowPosting, postDryRun, ideEnabled, item?.slug, item?.tracked, item?.iid, posted, reload]);
   const linkCtx = useMemo(() => ({ projectUrl, branch: item?.branch ?? null, mrWebUrl: item?.webUrl ?? null }), [projectUrl, item?.branch, item?.webUrl]);
   const { intro, sections } = useMemo(() => splitSections(markdown ?? ''), [markdown]);
   // Comments are numbered over the whole review: each section starts after the quotes before it.
@@ -475,6 +498,7 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, postDry
   const isOpen = (s: Section) => overrides[s.id] ?? OPEN_BY_DEFAULT.test(s.title);
   const [semantic, setSemantic] = usePersistentState('mr-review-viewer:semantic-on', true);
   const [panelOpen, setPanelOpen] = usePersistentState('mr-review-viewer:panel-open', true);
+  const [openingDiff, setOpeningDiff] = useState(false);
   const allOpen = sections.every(isOpen);
   const setAll = (open: boolean) => setOverrides(Object.fromEntries(sections.map((s) => [s.id, open])));
   const jump = (id: string) => {
@@ -510,6 +534,28 @@ export function ReviewReader({ item, markdown, projectUrl, allowPosting, postDry
           >
             <Sparkles className="size-3.5" />Semantic type
           </button>
+          {diffInIdeEnabled && item?.tracked && (
+            <button
+              onClick={async () => {
+                setOpeningDiff(true);
+                try {
+                  const { owned } = await showDiffInIde(item.slug);
+                  toast.success(owned ? 'Opened in your IDE: the MR changes are in source control' : 'Opened your own worktree in your IDE, as it is');
+                } catch (e) {
+                  toast.error('Could not open the IDE', { description: (e as Error).message });
+                } finally {
+                  setOpeningDiff(false);
+                }
+              }}
+              disabled={openingDiff}
+              aria-busy={openingDiff}
+              title={"Opens the MR's worktree in your IDE, with the MR's changes shown as uncommitted in source control.\nYour own worktree for this branch is opened as it is."}
+              className="touch-target inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+            >
+              {openingDiff ? <Loader2 className="size-3.5 animate-spin motion-reduce:animate-pulse" aria-hidden /> : <GitCompare className="size-3.5" aria-hidden />}
+              {openingDiff ? 'Opening…' : 'Show diff in IDE'}
+            </button>
+          )}
           {deepenEnabled && item?.tracked && <ActionButton slug={item.slug} action="deepen" state={botState === 'deepening' ? 'running' : botState === 'deepen-queued' ? 'queued' : 'idle'} />}
           {qaEnabled && item?.tracked && <ActionButton slug={item.slug} action="qa" state={botState === 'testing' ? 'running' : botState === 'qa-queued' ? 'queued' : 'idle'} />}
           {item?.resumeCommand && (
