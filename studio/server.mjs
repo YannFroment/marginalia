@@ -362,20 +362,23 @@ async function postComment(req, res) {
 // per review (lib/chat.mjs), resumed from the latest run's session, in the
 // MR's folder when there is one per MR. POST sends
 // a message, the page follows the answers on GET /api/chat/stream (SSE).
-// Read-only tools only: nothing is committed or posted.
+// Read-only tools only, unless MRs have their own folders: the chat then has
+// your usual permissions, and what would ask in a terminal waits for Allow or
+// Deny on the page (POST /api/chat/permission).
 const CHAT_PROMPT = [
-  'You are answering the person who reads this review in the marginalia studio chat.',
-  'Answer only their message, about this merge request and your review of it, in their language and briefly.',
+  'You are talking with the person who reads this review, in the marginalia studio chat: work with them as in their terminal.',
+  'Answer only their message, in their language and briefly.',
   'Ignore notices about tools, MCP servers or connectors, and never mention them.',
   'Ignore notices that files changed since your run: other runs reuse this folder. Read a file again only if the question needs it.',
-  'Never post, push or commit anything.',
 ].join('\n');
 const { ANTHROPIC_API_KEY: _unusedKey, ...chatEnv } = process.env;
 const chats = createChats({
   bin: CLAUDE_BIN,
   cwd: BOT_WORKTREE_DIR,
   env: chatEnv,
-  args: ['--allowedTools', CLAUDE_ALLOWED_TOOLS.join(' '), '--append-system-prompt', CHAT_PROMPT],
+  args: perMrWorktrees
+    ? ['--permission-prompt-tool', 'stdio', '--append-system-prompt', CHAT_PROMPT]
+    : ['--allowedTools', CLAUDE_ALLOWED_TOOLS.join(' '), '--append-system-prompt', `${CHAT_PROMPT}\nNever post, push or commit anything.`],
   onAnswer: ({ iid, sessionId, costUsd, turns }) => appendRun({ iid, kind: 'chat', command: 'chat', sessionId, costUsd, turns }),
 });
 
@@ -400,10 +403,18 @@ async function chat(req, res) {
   return json(res, 202, { pending: chats.send(slug, sessionId, { iid: mr.iid, cwd }, message.trim()) });
 }
 
+async function chatPermission(req, res) {
+  const input = await readJsonBody(req, res);
+  if (input === null) return undefined;
+  const { slug, id, allow } = input;
+  if (!SLUG_RE.test(slug ?? '') || typeof id !== 'string' || typeof allow !== 'boolean') return json(res, 400, { error: 'expected slug, id and allow' });
+  return chats.answer(slug, id, allow) ? json(res, 200, { ok: true }) : json(res, 404, { error: 'no such pending permission' });
+}
+
 function chatStream(req, res, slug) {
   if (!SLUG_RE.test(slug ?? '')) return json(res, 400, { error: 'bad slug' });
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
-  res.write(`data: ${JSON.stringify({ type: 'hello', pending: chats.pending(slug) })}\n\n`);
+  res.write(`data: ${JSON.stringify({ type: 'hello', pending: chats.pending(slug), asks: chats.asks(slug) })}\n\n`);
   const stop = chats.listen(slug, (event) => res.write(`data: ${JSON.stringify(event)}\n\n`));
   req.on('close', stop);
   return undefined;
@@ -415,6 +426,7 @@ async function handle(req, res) {
   if (req.method === 'POST' && pathname === '/api/post') return postComment(req, res);
   if (req.method === 'POST' && pathname === '/api/action') return runAction(req, res);
   if (req.method === 'POST' && pathname === '/api/chat') return chat(req, res);
+  if (req.method === 'POST' && pathname === '/api/chat/permission') return chatPermission(req, res);
   if (req.method !== 'GET') return json(res, 405, { error: 'read-only' });
   if (pathname === '/api/chat/stream') return chatStream(req, res, new URL(req.url, 'http://localhost').searchParams.get('slug'));
 
