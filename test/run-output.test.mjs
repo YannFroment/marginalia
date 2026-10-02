@@ -7,7 +7,7 @@ const { contractPrompt } = await import('../lib/report.mjs');
 
 test('the final event gives the final message and the run cost', () => {
   const stdout = JSON.stringify({ type: 'result', result: '# Report', total_cost_usd: 1.25, num_turns: 12, duration_ms: 9000, usage: { output_tokens: 3400 } });
-  assert.deepEqual(parseRunOutput(stdout), { text: '# Report', stats: { costUsd: 1.25, outputTokens: 3400, turns: 12, durationMs: 9000 } });
+  assert.deepEqual(parseRunOutput(stdout), { text: '# Report', stats: { costUsd: 1.25, outputTokens: 3400, turns: 12, durationMs: 9000, sessionId: null } });
 });
 
 test('anything else is kept as plain text', () => {

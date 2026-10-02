@@ -24,6 +24,7 @@ export interface ReviewItem {
   jira: { key: string; priority: string | null; rank: number | null } | null;
   lastDeepAt: string | null;
   lastQaAt: string | null;
+  resumeCommand: string | null;
 }
 
 export interface CrossFinding {
