@@ -100,3 +100,80 @@ test('the list fields are consistent with the findings', () => {
   assert.equal(f.highlights.filter((h) => h.severity === 'critical').length, 2, 'at most two highlights per severity');
   assert.equal(f.contract.source, 'json');
 });
+
+test('risk and tour come through the findings file, with levels normalized', () => {
+  const r = parseFindingsJson(JSON.stringify({
+    verdict: 'APPROVE',
+    risk: { level: 'Moderate', rationale: 'Touches checkout totals; tests cover the happy path only.', factors: ['payments', 'no negative-total test'] },
+    tour: [
+      { title: 'Pricing helper', summary: 'Rounding rules.', files: ['src/lib/pricing.ts'], findings: ['p1'] },
+      { title: 'Checkout route', files: ['./src/app/api/checkout/route.ts'] },
+      { title: '' },
+    ],
+    findings: [
+      { id: 'p1', severity: 'important', title: 'Negative total', path: 'src/lib/pricing.ts' },
+      { severity: 'critical', title: 'Client-side prices trusted', path: 'src/app/api/checkout/route.ts', line: 12 },
+    ],
+  }));
+  assert.equal(r.risk.level, 'medium');
+  assert.deepEqual(r.risk.factors, ['payments', 'no negative-total test']);
+  assert.equal(r.tour.length, 2);
+  assert.deepEqual(r.tour[0].findingIds, ['p1']);
+  assert.equal(r.tour[1].findingIds.length, 1, 'a finding on a stop file is attached to that stop');
+  assert.ok(r.warnings.some((w) => /tour stop #3/.test(w)));
+});
+
+test('a shape without risk or tour stays valid', () => {
+  const shape = buildShape({ markdown: '**Verdict:** APPROVE\n\n## Suggestion\n\n- **Nit** in `src/a.ts:1`.\n' });
+  assert.equal(shape.risk, null);
+  assert.deepEqual(shape.tour, []);
+  assert.equal(listFields(shape).risk, null);
+  const bad = parseFindingsJson('{"risk":"scary","findings":[{"title":"x"}]}');
+  assert.equal(bad.risk, null);
+  assert.ok(bad.warnings.some((w) => /risk level/.test(w)));
+});
+
+test('the overview needs both a before and an after, in plain words', () => {
+  const ok = parseFindingsJson(JSON.stringify({ overview: { before: 'Orders paid full price.', after: 'A coupon takes its percentage off.' }, findings: [{ title: 'x' }] }));
+  assert.deepEqual(ok.overview, { before: 'Orders paid full price.', after: 'A coupon takes its percentage off.' });
+  const half = parseFindingsJson(JSON.stringify({ overview: { before: 'Only a before.' }, findings: [{ title: 'x' }] }));
+  assert.equal(half.overview, null);
+  assert.ok(half.warnings.some((w) => /both "before" and "after"/.test(w)));
+  assert.equal(parseFindingsJson('{"findings":[{"title":"x"}]}').overview, null, 'absent is fine');
+});
+
+test('tests, database and generated files are read last, whatever order the tour came in', () => {
+  const stop = (title, ...files) => ({ title, files });
+  const r = parseFindingsJson(JSON.stringify({
+    tour: [
+      stop('Tests', 'src/a/__tests__/a.test.ts', 'src/a/a.spec.ts'),
+      stop('Migration', 'db/migrations/001_add_coupons.sql'),
+      stop('Core', 'src/a/a.ts'),
+      stop('Generated types', 'src/types/generated-schema.types.ts', 'pnpm-lock.yaml'),
+      stop('Mixed: code and its test', 'src/b/b.ts', 'src/b/b.test.ts'),
+      stop('No files yet'),
+    ],
+    findings: [{ title: 'x' }],
+  }));
+  assert.deepEqual(r.tour.map((s) => s.title), ['Core', 'Mixed: code and its test', 'No files yet', 'Tests', 'Migration', 'Generated types']);
+  assert.deepEqual(r.tour.map((s) => s.supporting), [false, false, false, true, true, true]);
+  assert.deepEqual(r.tour.map((s) => s.id), ['stop-1', 'stop-2', 'stop-3', 'stop-4', 'stop-5', 'stop-6'], 'ids follow the reading order');
+});
+
+test('chapters and overview that name code are flagged, plain ones and brand names are not', async () => {
+  const { technicalWord } = await import('../lib/plain-words.mjs');
+  for (const text of ['Replaces TrainsHelper.getJourneyTime', 'keyed on resource.type', 'the iata_code field', 'see src/app/a.ts', 'call getRate() first', 'uses `name`']) {
+    assert.ok(technicalWord(text), text);
+  }
+  for (const text of ['Each kind of link gets its own fetch.', 'Works on iOS and GitLab, e.g. in PayPal flows.', 'A coupon takes its percentage off.']) {
+    assert.equal(technicalWord(text), null, text);
+  }
+  const r = parseFindingsJson(JSON.stringify({
+    overview: { before: 'Orders paid full price.', after: 'getCoupon() now applies a discount.' },
+    tour: [{ title: 'A coupon takes its percentage off', summary: 'The total drops by the percentage. Check it never goes below zero.', files: ['a.ts'] }, { title: 'applyCoupon in pricing.ts', summary: 'x', files: ['b.ts'] }],
+    findings: [{ title: 'x' }],
+  }));
+  assert.ok(r.warnings.some((w) => /overview names code \(getCoupon\(\)\)/.test(w)));
+  assert.ok(r.warnings.some((w) => /1 of 2 chapters name code/.test(w) && /applyCoupon in pricing\.ts/.test(w)));
+  assert.ok(parseFindingsJson(JSON.stringify({ tour: [{ title: 'Plain idea', files: ['a.ts'] }], findings: [{ title: 'x' }] })).warnings.some((w) => /no overview/.test(w)));
+});

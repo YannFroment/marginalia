@@ -32,6 +32,13 @@ test('discussions keep human notes only, oldest thread first', () => {
   assert.deepEqual([out[1].path, out[1].line], ['a.ts', 4]);
 });
 
+test('a thread says which side of the diff it is on and the commit it was opened on', () => {
+  const on = (position) => toDiscussions([{ id: 'x', notes: [note(1, 'alice', '2026-01-01T00:00:00Z', { position })] }], 'me')[0];
+  assert.deepEqual([on({ new_path: 'a.ts', new_line: 4, head_sha: 'h1' }).side, on({ new_path: 'a.ts', new_line: 4, head_sha: 'h1' }).headSha], ['new', 'h1']);
+  assert.equal(on({ old_path: 'a.ts', old_line: 2 }).side, 'old');
+  assert.equal(on(undefined).side, null);
+});
+
 test('a draft falls back on the old side of the diff', () => {
   assert.deepEqual(toDraft({ id: 7, note: 'hi', position: { old_path: 'x.ts', old_line: 3 } }), { id: 7, body: 'hi', path: 'x.ts', line: 3 });
   assert.deepEqual(toDraft({ id: 8, note: 'general' }), { id: 8, body: 'general', path: null, line: null });

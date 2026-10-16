@@ -1,11 +1,15 @@
-import { useState } from 'react';
-import { toast } from 'sonner';
-import { Command, Loader2, RefreshCw, Eye, TriangleAlert, Power, ShieldCheck } from 'lucide-react';
-import { setPollInterval, type BotStatus } from '../lib/api';
+import { Command, Loader2, RefreshCw, Eye, TriangleAlert, Power, ShieldCheck, Settings } from 'lucide-react';
+import type { BotStatus } from '../lib/api';
 import { inTime, timeAgo } from '../lib/utils';
 import { Logo } from './Logo';
 
-function BotState({ status }: { status: BotStatus | null }) {
+function BotState({ status, connection }: { status: BotStatus | null; connection: 'connecting' | 'unreachable' | 'ok' }) {
+  if (connection === 'unreachable') {
+    return <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-300"><TriangleAlert className="size-4" />Cannot reach the studio · retrying</span>;
+  }
+  if (connection === 'connecting') {
+    return <span className="flex items-center gap-1.5 text-fg-muted"><Loader2 className="size-4 animate-spin motion-reduce:animate-pulse" />Connecting…</span>;
+  }
   if (!status || status.phase === 'stopped') {
     return <span className="flex items-center gap-1.5 text-fg-muted"><Power className="size-4" />Bot stopped</span>;
   }
@@ -31,54 +35,30 @@ function BotState({ status }: { status: BotStatus | null }) {
   );
 }
 
-const PRESETS = [1, 2, 5, 10, 15, 30, 60];
-
-// Poll interval, persisted server-side (settings.json); the bot re-arms its timer.
-function PollInterval({ minutes }: { minutes: number }) {
-  const [pending, setPending] = useState<number | null>(null);
-  const value = pending ?? minutes;
-  const options = PRESETS.includes(value) ? PRESETS : [...PRESETS, value].sort((a, b) => a - b);
-  return (
-    <label className="hidden items-center gap-1.5 text-xs text-fg-muted md:flex" title="How often the bot polls GitLab">
-      Poll every
-      <select
-        value={value}
-        onChange={async (e) => {
-          const next = Number(e.target.value);
-          setPending(next);
-          try {
-            await setPollInterval(next);
-            toast.success(`Polling every ${next < 60 ? `${next} min` : `${next / 60} h`}`, { description: 'Applied by the bot right away.' });
-          } catch (err) {
-            toast.error('Could not change the poll interval', { description: (err as Error).message });
-          } finally {
-            setPending(null);
-          }
-        }}
-        className={`touch-target rounded-md border bg-white px-1.5 py-1 text-xs text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800`}
-      >
-        {options.map((m) => <option key={m} value={m}>{m < 60 ? `${m} min` : `${m / 60} h`}</option>)}
-      </select>
-    </label>
-  );
-}
-
-export function StatusBar({ status, pollMinutes, onOpenPalette, onHome }: { status: BotStatus | null; pollMinutes: number | null; onOpenPalette: () => void; onHome: () => void }) {
+export function StatusBar({ status, connection, settingsActive, onOpenPalette, onHome, onSettings }: { status: BotStatus | null; connection: 'connecting' | 'unreachable' | 'ok'; settingsActive: boolean; onOpenPalette: () => void; onHome: () => void; onSettings: () => void }) {
   return (
     <div className="border-b border-zinc-200 dark:border-zinc-800">
       <div className="flex h-14 items-center gap-4 px-4">
         <button onClick={onHome} className="touch-target flex items-center gap-2 font-semibold tracking-tight"><Logo />Marginalia</button>
-        <div className="ml-2 text-sm"><BotState status={status} /></div>
+        <div className="ml-2 text-sm"><BotState status={status} connection={connection} /></div>
         {status?.lastPoll && (
           <span className="hidden text-xs text-fg-muted md:inline">last poll {timeAgo(status.lastPoll.at)}</span>
         )}
-        {pollMinutes !== null && <div className="ml-auto"><PollInterval minutes={pollMinutes} /></div>}
         <button
           onClick={onOpenPalette}
-          className="touch-target ml-2 flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-fg-muted hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
+          className="touch-target ml-auto flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-fg-muted hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
         >
           Search…
           <kbd className="flex items-center gap-0.5 rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800"><Command className="size-3" />K</kbd>
+        </button>
+        <button
+          onClick={onSettings}
+          aria-label="Settings"
+          aria-current={settingsActive ? 'page' : undefined}
+          title="Settings"
+          className={`touch-target rounded-lg border p-2 hover:border-zinc-300 dark:hover:border-zinc-700 ${settingsActive ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-zinc-200 bg-white text-fg-muted dark:border-zinc-800 dark:bg-zinc-900'}`}
+        >
+          <Settings className="size-4" />
         </button>
       </div>
     </div>

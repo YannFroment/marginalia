@@ -38,3 +38,21 @@ test('the conversation prompt carries replies and says who spoke', () => {
   assert.match(text, /me \(the reviewer\): Check this/);
   assert.match(text, /dev: Fixed in abc/);
 });
+
+test('a version id says when it was written', async () => {
+  const { versionTime } = await import('../lib/history.mjs');
+  assert.equal(versionTime('2026-03-01T10-20-30-456Z'), '2026-03-01T10:20:30.456Z');
+});
+
+test('the commit a review was run on is stored with it and kept when the review is replaced', async () => {
+  const { writeReportFiles } = await import('../lib/report.mjs');
+  const { loadShape, buildShape } = await import('../lib/findings.mjs');
+  const path = join(REVIEWS_DIR, 'feat-sha.md');
+  const report = { content: 'a review', shape: buildShape({ markdown: 'a review' }) };
+  await writeReportFiles(path, report, 'abc123');
+  assert.equal((await loadShape(REVIEWS_DIR, 'feat-sha', '')).reviewedSha, 'abc123');
+  const id = await archiveReview(path, 'the next review');
+  assert.equal((await readHistory('feat-sha', id)).shape.reviewedSha, 'abc123');
+  await writeReportFiles(path, report);
+  assert.equal((await loadShape(REVIEWS_DIR, 'feat-sha', '')).reviewedSha, undefined, 'no sha, no field');
+});

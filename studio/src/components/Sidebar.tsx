@@ -1,18 +1,15 @@
 import { useMemo, useState } from 'react';
 import { ChevronRight, Search } from 'lucide-react';
 import type { ReviewItem } from '../lib/api';
+import { groupReviews, standingOf, type Group } from '../lib/dashboard';
 import { cn, timeAgo } from '../lib/utils';
 import { TabIcon } from './TabIcon';
 import type { BotState } from './TabStrip';
 
-interface Group {
-  id: string;
-  label: string;
-  items: ReviewItem[];
-}
+const TONE = { success: 'text-emerald-700 dark:text-emerald-300', warning: 'text-amber-700 dark:text-amber-300', info: 'text-blue-700 dark:text-blue-300', neutral: 'text-fg-muted' };
 
-// Navigation / history: every review, grouped by what needs attention. Meant
-// to be tucked away; the open reviews live in the tabs.
+// Navigation / history: every review, in the same groups as Home (whose turn it is on GitLab), plus the
+// retros. Meant to be tucked away; the open reviews live in the tabs.
 export function Sidebar({ items, activeSlug, botBySlug, isUnread, open, onSelect, onClose }: {
   items: ReviewItem[];
   activeSlug: string | null;
@@ -22,21 +19,23 @@ export function Sidebar({ items, activeSlug, botBySlug, isUnread, open, onSelect
   onSelect: (slug: string) => void;
   onClose: () => void;
 }) {
+  const standing = (i: ReviewItem) => (i.myState ? standingOf(i.kind, i.myState) : null);
   const [query, setQuery] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
+  const filtering = query.trim() !== '';
   const groups = useMemo<Group[]>(() => {
     const q = query.trim().toLowerCase();
     const match = (i: ReviewItem) => !q || `${i.iid ?? ''} ${i.title} ${i.branch ?? ''} ${i.author ?? ''} ${i.slug}`.toLowerCase().includes(q);
     const f = items.filter(match);
+    const retros = f.filter((i) => i.kind === 'retro');
     return [
-      { id: 'changes', label: 'Needs changes', items: f.filter((i) => i.kind === 'review' && i.verdict === 'REQUEST_CHANGES') },
-      { id: 'approved', label: 'Approved', items: f.filter((i) => i.kind === 'review' && i.verdict === 'APPROVE') },
-      { id: 'unrated', label: 'Unrated', items: f.filter((i) => i.kind === 'review' && i.verdict !== 'APPROVE' && i.verdict !== 'REQUEST_CHANGES') },
-      { id: 'triage', label: 'Triage', items: f.filter((i) => i.kind === 'comments') },
-      { id: 'retro', label: 'Retro', items: f.filter((i) => i.kind === 'retro') },
-    ].filter((g) => g.items.length > 0);
+      ...groupReviews(f),
+      ...(retros.length ? [{ id: 'retro' as const, title: 'Retro', hint: '', needsYou: false, collapsed: true, items: retros }] : []),
+    ] as Group[];
   }, [items, query]);
+  // What is done is folded, unless it holds the review on screen or a filter is looking for it.
+  const isCollapsed = (g: Group) => collapsed[g.id] ?? (g.collapsed && !filtering && !g.items.some((i) => i.slug === activeSlug));
 
   return (
     <>
@@ -73,11 +72,11 @@ export function Sidebar({ items, activeSlug, botBySlug, isUnread, open, onSelect
                   tabIndex={open ? 0 : -1}
                   className="flex w-full items-center gap-1 rounded px-2 py-1 text-xs font-medium uppercase tracking-wide text-fg-muted hover:text-zinc-900 dark:hover:text-zinc-100"
                 >
-                  <ChevronRight className={cn('size-3.5 transition-transform motion-reduce:transition-none', !collapsed[g.id] && 'rotate-90')} />
-                  {g.label}
-                  <span className="ml-auto font-normal normal-case tracking-normal">{g.items.length}</span>
+                  <ChevronRight className={cn('size-3.5 transition-transform motion-reduce:transition-none', !isCollapsed(g) && 'rotate-90')} />
+                  {g.title}
+                  <span className={cn('ml-auto font-normal normal-case tracking-normal', g.needsYou && 'text-blue-600 dark:text-blue-400')}>{g.items.length}</span>
                 </button>
-                {!collapsed[g.id] && (
+                {!isCollapsed(g) && (
                   <ul>
                     {g.items.map((item) => {
                       const active = item.slug === activeSlug;
@@ -100,6 +99,7 @@ export function Sidebar({ items, activeSlug, botBySlug, isUnread, open, onSelect
                               <span className="mt-0.5 flex items-center gap-1.5 text-xs text-fg-muted">
                                 {item.iid && <span className="font-mono">!{item.iid}</span>}
                                 <span>{timeAgo(item.reviewedAt)}</span>
+                                {standing(item) && <span className={TONE[standing(item)!.tone]}>{standing(item)!.label}</span>}
                               </span>
                             </span>
                             {isUnread(item) && <span className="mt-1.5 size-2 shrink-0 rounded-full bg-blue-500" aria-hidden />}

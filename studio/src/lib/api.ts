@@ -1,7 +1,22 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { fetchJson } from './fetchRetry';
 
 export type Verdict = 'APPROVE' | 'REQUEST_CHANGES' | 'OTHER' | null;
 type Kind = 'review' | 'comments' | 'retro';
+
+// Where an MR really stands for me, read from GitLab (see lib/review-state.mjs).
+export interface MyState {
+  requested: boolean;
+  decision: 'approved' | 'changes_requested' | null;
+  reviewed: boolean;
+  drafts: number;
+  myActivityAt: string | null;
+  lastPushAt: string | null;
+  authorActivityAt: string | null;
+  peerActivityAt: string | null;
+  unresolved: number;
+  computedAt: string;
+}
 
 export interface ReviewItem {
   slug: string;
@@ -12,6 +27,8 @@ export interface ReviewItem {
   webUrl: string | null;
   branch: string | null;
   verdict: Verdict;
+  myState?: MyState | null;
+  risk?: RiskLevel | null;
   critical: number;
   important: number;
   reviewedAt: string;
@@ -25,6 +42,49 @@ export interface ReviewItem {
   postable: number;
   contract: { source: ShapeSource; warnings: string[] };
   jira: { key: string; priority: string | null; rank: number | null } | null;
+}
+
+export type RiskLevel = 'low' | 'medium' | 'high';
+
+export interface Risk {
+  level: RiskLevel;
+  rationale: string | null;
+  factors: string[];
+}
+
+// One stop of the guided read: a group of changes, what to check in it, and its findings.
+// What the MR changed in plain words, before and after.
+export interface Overview {
+  before: string;
+  after: string;
+}
+
+export interface TourStop {
+  id: string;
+  title: string;
+  summary: string | null;
+  files: string[];
+  findingIds: string[];
+  // Tests, database or generated files only: read last.
+  supporting?: boolean;
+}
+
+// A changed file of the MR with its numbered diff lines (see lib/mr-diff.mjs).
+export interface DiffLine {
+  t: 'hunk' | 'add' | 'del' | 'ctx';
+  old?: number | null;
+  new?: number | null;
+  text: string;
+}
+
+export interface DiffFile {
+  path: string;
+  oldPath: string | null;
+  status: 'added' | 'deleted' | 'renamed' | 'modified';
+  additions: number;
+  deletions: number;
+  omitted: boolean;
+  lines: DiffLine[];
 }
 
 type ShapeSource = 'json' | 'markdown' | 'none';
@@ -45,6 +105,9 @@ interface ReviewShape {
   source: ShapeSource;
   verdict: Verdict;
   summary: string | null;
+  risk?: Risk | null;
+  overview?: Overview | null;
+  tour?: TourStop[];
   findings: Finding[];
   warnings: string[];
 }
@@ -96,27 +159,36 @@ interface ReviewsPayload {
   stacks: Stack[];
   projectUrl: string | null;
   jiraBaseUrl: string | null;
-  settings: { pollIntervalMinutes: number };
+  settings: Settings;
+  settingsDefaults: Settings;
   allowPosting: boolean;
   allowPush: boolean;
   posted: Record<string, PostedInfo>;
 }
 
-// Reloads on every SSE "changed" event (fs.watch on the server).
+// Reloads on every SSE "changed" event (fs.watch on the server). Until the first answer arrives it keeps
+// trying: a server that is slow or restarting must not leave the page empty.
 export function useReviews() {
   const [data, setData] = useState<ReviewsPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const loaded = useRef(false);
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/reviews');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setData(await res.json());
+      setData(await fetchJson<ReviewsPayload>('/api/reviews', { retries: loaded.current ? 0 : 6 }));
+      loaded.current = true;
       setError(null);
     } catch (e) {
       setError(String((e as Error).message));
     }
   }, []);
+
+  // Nothing yet and the last try failed: try again soon, the 30 s poll is too slow for a first load.
+  useEffect(() => {
+    if (!error || data) return undefined;
+    const t = setTimeout(load, 3000);
+    return () => clearTimeout(t);
+  }, [error, data, load]);
 
   useEffect(() => {
     load();
@@ -137,20 +209,23 @@ export interface ReviewContent {
   shape: ReviewShape;
 }
 
+// The content of one review. What is shown always belongs to `slug`: it is never the previous review's while the
+// next loads. A new version of the same review (`refreshKey`) is fetched quietly, the old one stays meanwhile.
 export function useReview(slug: string | null, refreshKey: string | undefined) {
-  const [content, setContent] = useState<ReviewContent | null>(null);
+  const [result, setResult] = useState<{ slug: string; content: ReviewContent | null; error: string | null } | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    if (!slug) return;
-    let cancelled = false;
-    fetch(`/api/reviews/${encodeURIComponent(slug)}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((j) => !cancelled && setContent({ markdown: j.markdown, shape: j.shape }))
-      .catch(() => !cancelled && setContent(null));
-    return () => {
-      cancelled = true;
-    };
-  }, [slug, refreshKey]);
-  return content;
+    if (!slug) return undefined;
+    const controller = new AbortController();
+    fetchJson<{ markdown: string; shape: ReviewShape }>(`/api/reviews/${encodeURIComponent(slug)}`, { signal: controller.signal })
+      .then((j) => setResult({ slug, content: { markdown: j.markdown, shape: j.shape }, error: null }))
+      .catch((e: Error) => {
+        if (!controller.signal.aborted) setResult((prev) => ({ slug, content: prev?.slug === slug ? prev.content : null, error: e.message }));
+      });
+    return () => controller.abort();
+  }, [slug, refreshKey, attempt]);
+  const mine = result?.slug === slug ? result : null;
+  return { content: mine?.content ?? null, error: mine?.content ? null : mine?.error ?? null, retry: () => setAttempt((n) => n + 1) };
 }
 
 // "Read" tracking: slug -> reviewedAt seen. localStorage may be unavailable.
@@ -170,14 +245,25 @@ export function saveSeen(seen: Record<string, string>) {
   }
 }
 
-export async function setPollInterval(minutes: number): Promise<void> {
+export interface Settings {
+  pollIntervalMinutes: number;
+  staleAfterDays: number;
+  allowedTargetBranches: string[];
+  excludeAuthors: string[];
+}
+
+// Only the keys to change; null puts a key back on its .env default. The bot applies it without a restart.
+export async function saveSettings(patch: { [K in keyof Settings]?: Settings[K] | null }): Promise<{ settings: Settings; defaults: Settings }> {
   const res = await fetch('/api/settings', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ pollIntervalMinutes: minutes }),
+    body: JSON.stringify(patch),
   });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+  return j;
 }
+
 
 export async function postComment(slug: string, commentId: string, body: string, target?: { path: string; line?: number }): Promise<PostedInfo> {
   const res = await fetch('/api/post', {
@@ -240,43 +326,6 @@ export async function deleteDraft(slug: string, id: number): Promise<void> {
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
 }
 
-interface DiscussionNote {
-  id: number;
-  author: string | null;
-  authorName: string | null;
-  mine: boolean;
-  body: string;
-  at: string;
-  path: string | null;
-  line: number | null;
-}
-
-export interface Discussion {
-  id: string;
-  resolved: boolean;
-  resolvable: boolean;
-  path: string | null;
-  line: number | null;
-  notes: DiscussionNote[];
-}
-
-export async function fetchDiscussions(slug: string): Promise<Discussion[]> {
-  const res = await fetch(`/api/discussions/${encodeURIComponent(slug)}`);
-  const j = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
-  return j.discussions;
-}
-
-// Goes up as a draft of the pending review, like every other comment.
-export async function replyToDiscussion(slug: string, discussionId: string, body: string): Promise<void> {
-  const res = await fetch('/api/reply', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ slug, discussionId, body }),
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
-}
-
 export interface ReviewVersion {
   id: string;
   at: string;
@@ -322,4 +371,33 @@ export async function pushFixes(slug: string): Promise<FixesStatus> {
   const j = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
   return j;
+}
+
+// A thread of the MR's GitLab conversation that sits on a line of code.
+export interface ThreadNote {
+  id: number;
+  author: string | null;
+  authorName: string | null;
+  mine: boolean;
+  body: string;
+  at: string;
+}
+
+export interface Thread {
+  id: string;
+  resolved: boolean;
+  resolvable: boolean;
+  path: string;
+  line: number | null;
+  side: 'new' | 'old' | null;
+  // Opened on an earlier version of the MR than its head: the line may have moved.
+  outdated: boolean;
+  notes: ThreadNote[];
+}
+
+export async function fetchThreads(slug: string): Promise<Thread[]> {
+  const res = await fetch(`/api/reviews/${encodeURIComponent(slug)}/threads`);
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+  return j.threads;
 }

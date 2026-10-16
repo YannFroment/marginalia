@@ -173,23 +173,30 @@ paths:
     put:
       tags: [Settings]
       operationId: updateSettings
-      summary: Set the poll interval
-      description: Saved to `settings.json`; the bot picks it up without a restart.
+      summary: Change settings
+      description: Saved to `settings.json`; the bot picks it up without a restart. Send only the keys to change; a key set to `null` goes back to its `.env` default.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [pollIntervalMinutes]
               properties:
-                pollIntervalMinutes: { type: integer, minimum: 1, maximum: 1440 }
+                pollIntervalMinutes: { type: [integer, 'null'], minimum: 1, maximum: 1440 }
+                staleAfterDays: { type: [integer, 'null'], minimum: 1, maximum: 365 }
+                allowedTargetBranches: { type: [array, 'null'], items: { type: string } }
+                excludeAuthors: { type: [array, 'null'], items: { type: string } }
       responses:
         '200':
-          description: The saved settings.
+          description: The settings now in force, and the `.env` defaults.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Settings' }
+              schema:
+                type: object
+                required: [settings, defaults]
+                properties:
+                  settings: { $ref: '#/components/schemas/Settings' }
+                  defaults: { $ref: '#/components/schemas/Settings' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
@@ -464,9 +471,12 @@ components:
       description: '`comments` is a triage of reviewer comments on an MR you authored.'
     Settings:
       type: object
-      required: [pollIntervalMinutes]
+      required: [pollIntervalMinutes, staleAfterDays, allowedTargetBranches, excludeAuthors]
       properties:
         pollIntervalMinutes: { type: integer, minimum: 1, maximum: 1440 }
+        staleAfterDays: { type: integer, minimum: 1, maximum: 365, description: MRs with no activity for this long are skipped. }
+        allowedTargetBranches: { type: array, items: { type: string }, description: Only these target branches are reviewed; empty means all. }
+        excludeAuthors: { type: array, items: { type: string }, description: GitLab usernames whose MRs are never touched. }
     Highlight:
       type: object
       required: [severity, text]
@@ -641,7 +651,7 @@ components:
           description: '`false` when GitLab refused the line anchor and the comment went up as a general note. Absent when no target was given.'
     ReviewsPayload:
       type: object
-      required: [status, items, stacks, projectUrl, settings, allowPosting, allowPush, posted]
+      required: [status, items, stacks, projectUrl, settings, settingsDefaults, allowPosting, allowPush, posted]
       properties:
         status:
           oneOf:
@@ -651,6 +661,7 @@ components:
         stacks: { type: array, items: { $ref: '#/components/schemas/Stack' } }
         projectUrl: { type: [string, 'null'], format: uri }
         settings: { $ref: '#/components/schemas/Settings' }
+        settingsDefaults: { $ref: '#/components/schemas/Settings' }
         allowPosting: { type: boolean }
         allowPush: { type: boolean }
         posted:

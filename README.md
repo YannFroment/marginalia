@@ -68,8 +68,8 @@ the report's wording. It is read, in order of preference, from:
    finding, an optional `**Overview:**` line, and a blockquote under a bullet as its
    comment. The first `path[:line]` of the bullet is where *Add to review* anchors
    it in the diff (see `examples/commands/review.md`);
-3. nothing: the studio says so in a notice, and you can still comment on any file
-   or line from the Discussion section.
+3. nothing: the studio says so in a notice, and the findings it could not read are
+   left out of the per-finding "Add to review".
 
 A finding's `id` comes from its file and title, not from the wording of its
 comment, so it stays the same when a re-run rewords it. The bot warns (in its log
@@ -218,10 +218,15 @@ track several MRs across polls in the logs.
 **Marginalia** is the local reader for the generated reviews, at `http://localhost:4477`
 (`STUDIO_PORT`, bound to `127.0.0.1`, read-only). Vite + React + Tailwind
 front end (`studio/`), served as static files by `studio/server.mjs`, which
-`poll.mjs` starts at boot. It lists reviews as cards (verdict, Critical /
-Important counts, unread dot; most urgent Jira ticket first when all three `JIRA_*` are
-set in `.env`; `JIRA_BASE_URL` alone only links the ticket, newest first otherwise), renders each one with a table of contents and
-collapsible sections, has a copy button on the "Comment to post" blocks, and
+`poll.mjs` starts at boot. Home lists the reviews as rows grouped by whose turn it is, read from GitLab and not from what this
+browser has opened: *Needs your first review* (you have not reviewed it on GitLab), *Returned to you*
+(the author pushed or answered after your review), *Review to send* (your comments wait in a pending
+review), *Comments on your merge requests*, *Waiting on others* and, folded, *Done*. The poll reads
+that standing for each MR (your notes, your approval or request for changes, pushes, open threads,
+your drafts) and the studio refreshes the one MR right after you post, submit or delete a draft. A row
+shows the author, what you decided, the Critical / Important counts, the risk, the verdict and the age (most urgent Jira ticket first when all three `JIRA_*` are
+set in `.env`; `JIRA_BASE_URL` alone only links the ticket, newest first otherwise). A review opens as a
+guided tour with its diff, has a copy button on the "Comment to post" blocks, and
 a `⌘K` search. It refreshes live when a review file or `status.json` changes.
 
 ```bash

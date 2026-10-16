@@ -119,3 +119,15 @@ test('a shape stored by the bot is used as is; a review without one is read from
   assert.equal(legacy.verdict, 'APPROVE');
   assert.equal(legacy.findings.length, 1);
 });
+
+test('guided-tour: risk and tour reach the studio, and a finding on a stop file joins that stop', async () => {
+  const { shape } = (await run('guided-tour')).built;
+  assert.equal(shape.risk.level, 'high');
+  assert.equal(listFields(shape).risk, 'high');
+  assert.equal(shape.overview.before.startsWith('A coupon code was ignored'), true);
+  assert.deepEqual(shape.tour.map((s) => s.title), ['Pricing helper', 'Checkout API endpoint', 'Tests for the coupon rules'], 'the tests chapter was written first and is read last');
+  assert.equal(shape.tour[2].supporting, true);
+  const byTitle = (t) => shape.findings.find((f) => f.title === t).id;
+  assert.deepEqual(shape.tour[0].findingIds, [byTitle('Total can go negative')]);
+  assert.deepEqual(shape.tour[1].findingIds, [byTitle('Client prices are trusted')]);
+});

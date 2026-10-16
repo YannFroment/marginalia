@@ -1,14 +1,15 @@
 import './lib/node-check.mjs';
 import { mkdir } from 'node:fs/promises';
 import { watch } from 'node:fs';
-import { GITLAB_USERNAME, TRIAGE_COMMAND, allowedTargets, REVIEWS_DIR, ROOT } from './lib/config.mjs';
-import { loadSettings, pollIntervalMs } from './lib/settings.mjs';
+import { GITLAB_USERNAME, TRIAGE_COMMAND, REVIEWS_DIR, ROOT } from './lib/config.mjs';
+import { allowedTargets, loadSettings, pollIntervalMs } from './lib/settings.mjs';
 import { startStudio } from './studio/server.mjs';
 import { isFancyTerminal, c, timestamp, log, mrTag } from './lib/log.mjs';
 import { loadState, saveState } from './lib/state.mjs';
 import { status, writeStatus, setMrStatus } from './lib/status.mjs';
 import { notify } from './lib/notify.mjs';
 import { listOpenMergeRequests, reviewFileCoversLastPush, latestPeerCommentAt } from './lib/gitlab.mjs';
+import { fetchReviewStates } from './lib/mr-state.mjs';
 import { jiraPriorityOf } from './lib/jira.mjs';
 import { reviewOutputPath, mrCommentsOutputPath, mtimeOrNull } from './lib/paths.mjs';
 import { ensureBotWorktree } from './lib/worktree.mjs';
@@ -28,8 +29,9 @@ async function poll() {
   // filter looks at the branch the whole stack is based on.
   const stacks = analyzeStacks(openMrs);
   const openByIid = new Map(openMrs.map((mr) => [mr.iid, mr]));
-  const allMrs = allowedTargets.length
-    ? openMrs.filter((mr) => allowedTargets.includes(stacks.get(mr.iid).baseBranch))
+  const targets = allowedTargets();
+  const allMrs = targets.length
+    ? openMrs.filter((mr) => targets.includes(stacks.get(mr.iid).baseBranch))
     : openMrs;
   const stackInfo = (mr) => {
     const info = stacks.get(mr.iid);
@@ -59,6 +61,10 @@ async function poll() {
   const reviewedAts = await Promise.all(reviewMrs.map((mr) => mtimeOrNull(reviewOutputPath(mr))));
   const triagedAts = await Promise.all(myMrs.map((mr) => mtimeOrNull(mrCommentsOutputPath(mr))));
   const jiras = await Promise.all(reviewMrs.map((mr) => jiraPriorityOf(mr)));
+  // Where each MR really stands for me, read from GitLab. One that cannot be read keeps what it had.
+  const states = await fetchReviewStates([...reviewMrs, ...myMrs]);
+  const previous = new Map(status.mrs.map((m) => [m.iid, m.myState]));
+  const stateOf = (mr) => states.get(mr.iid) ?? previous.get(mr.iid) ?? null;
   status.mrs = [
     ...reviewMrs.map((mr, i) => ({
       iid: mr.iid,
@@ -75,6 +81,7 @@ async function poll() {
       error: null,
       updatedAt: mr.updated_at,
       jira: jiras[i],
+      myState: stateOf(mr),
     })),
     ...myMrsWithSignal.map(({ mr, peerCommentAt }, i) => ({
       iid: mr.iid,
@@ -88,6 +95,7 @@ async function poll() {
       reviewedAt: triagedAts[i] === null ? null : new Date(triagedAts[i]).toISOString(),
       error: null,
       updatedAt: mr.updated_at,
+      myState: stateOf(mr),
     })),
   ];
   await writeStatus();

@@ -1,0 +1,61 @@
+{
+  "verdict": "REQUEST_CHANGES",
+  "summary": "Coupon codes at checkout: one real problem, one test gap.",
+  "risk": {
+    "level": "high",
+    "rationale": "Changes how checkout totals are computed; tests cover the happy path only.",
+    "factors": [
+      "payments",
+      "no negative-total test"
+    ]
+  },
+  "tour": [
+    {
+      "title": "Tests for the coupon rules",
+      "summary": "The rounding and no-coupon cases are covered.",
+      "files": [
+        "src/lib/pricing.test.ts"
+      ]
+    },
+    {
+      "title": "Pricing helper",
+      "summary": "Applies a percentage coupon to line items. Check rounding and the negative total.",
+      "files": [
+        "src/lib/pricing.ts"
+      ],
+      "findings": [
+        "neg-total"
+      ]
+    },
+    {
+      "title": "Checkout API endpoint",
+      "summary": "Uses the helper and returns 422 on a bad code. Check where prices come from.",
+      "files": [
+        "src/app/api/checkout/route.ts"
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "id": "neg-total",
+      "severity": "important",
+      "title": "Total can go negative",
+      "path": "src/lib/pricing.ts",
+      "line": 42,
+      "body": "A discount above the subtotal is not capped.",
+      "comment": "A coupon larger than the subtotal gives a negative total. Clamp at 0 and add a test."
+    },
+    {
+      "severity": "critical",
+      "title": "Client prices are trusted",
+      "path": "src/app/api/checkout/route.ts",
+      "line": 12,
+      "body": "The subtotal is computed from items in the request body.",
+      "comment": "Prices come from the request, so a client can set its own. Look them up server side."
+    }
+  ],
+  "overview": {
+    "before": "A coupon code was ignored at checkout, so every order paid the full price.",
+    "after": "Checkout applies a percentage coupon to the items, and an invalid code is refused with a clear error."
+  }
+}

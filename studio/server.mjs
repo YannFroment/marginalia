@@ -1,6 +1,6 @@
 // Local review reader: JSON API over REVIEWS_DIR + status.json, live updates
 // over SSE, and the built React app (studio/dist) as static files. Bound to
-// 127.0.0.1 only; read-only apart from PUT /api/settings (poll interval) and,
+// 127.0.0.1 only; read-only apart from PUT /api/settings (the Settings page) and,
 // when ALLOW_POSTING=true, POST /api/post (comment on the MR, after confirmation),
 // POST /api/rerun (queue a fresh review of one MR) and, when ALLOW_PUSH=true,
 // POST /api/push (push a triage's local fixes to the MR branch).
@@ -15,11 +15,17 @@ import { TRIAGE_FILE_PREFIX } from '../lib/paths.mjs';
 import { loadPosted, savePosted } from '../lib/posted.mjs';
 import { listHistory, readHistory } from '../lib/history.mjs';
 import { buildShape, listFields, loadShape } from '../lib/findings.mjs';
-import { listDiscussions, findPublishedNoteId, mergeRequestNoteExists, approveMergeRequest } from '../lib/gitlab.mjs';
+import { askAboutStop } from '../lib/chat.mjs';
+import { buildChatPrompt, parseChatInput } from '../lib/chat-prompt.mjs';
+import { fetchReviewState } from '../lib/mr-state.mjs';
+import { filesForPatterns, toDiffFile } from '../lib/mr-diff.mjs';
+import { reviewDiff } from '../lib/review-diff.mjs';
+import { reviewThreads } from '../lib/review-threads.mjs';
+import { listMergeRequestDiffs, findPublishedNoteId, mergeRequestNoteExists, approveMergeRequest } from '../lib/gitlab.mjs';
 import { parseReviewAction, reviewerStateFor } from '../lib/review-actions.mjs';
-import { createDraftNote, createDraftReply, createInlineDraftNote, listDraftNotes, updateDraftNote, deleteDraftNote, publishDraftNotes, draftNoteExists } from '../lib/gitlab-drafts.mjs';
+import { createDraftNote, createInlineDraftNote, listDraftNotes, updateDraftNote, deleteDraftNote, publishDraftNotes, draftNoteExists } from '../lib/gitlab-drafts.mjs';
 import { byPriorityThenDate } from '../lib/jira.mjs';
-import { loadSettings, saveSettings } from '../lib/settings.mjs';
+import { envDefaults, loadSettings, saveSettings } from '../lib/settings.mjs';
 import { loadState, saveState } from '../lib/state.mjs';
 import { parseAcrossLayers } from '../lib/stack.mjs';
 
@@ -82,7 +88,10 @@ async function reconcilePosted() {
         /* GitLab unreachable: keep it for now */
       }
     }
-    if (changed) await savePosted(posted);
+    if (changed) {
+      await savePosted(posted);
+      broadcast();
+    }
   });
   postQueue = run.catch(() => {});
   await run.catch(() => {});
@@ -114,8 +123,24 @@ function buildStacks(status) {
   return [...byId.values()].map((st) => ({ ...st, layers: st.layers.sort((a, b) => a.position - b.position) }));
 }
 
+// Where an MR stands for me is read from GitLab by the poll. After an action here (a comment, a
+// submitted review, a deleted draft) that one MR is read again at once, so Home moves it without
+// waiting for the next poll. The newer of the two readings is the one shown.
+const stateOverrides = new Map();
+const newerState = (a, b) => (a && b ? (Date.parse(a.computedAt) >= Date.parse(b.computedAt) ? a : b) : a ?? b ?? null);
+function refreshState(mr) {
+  fetchReviewState(mr)
+    .then((state) => {
+      stateOverrides.set(mr.iid, state);
+      broadcast();
+    })
+    .catch((err) => console.warn(`[studio] could not refresh where !${mr.iid} stands: ${String(err.message).slice(0, 120)}`));
+}
+
 async function listReviews() {
-  await reconcilePosted();
+  // Checked against GitLab in the background (a round trip per posted comment): the list must not wait
+  // for it. When it changes something, the page is told and loads the list again.
+  void reconcilePosted();
   const status = await readStatus();
   const byPath = new Map((status?.mrs ?? []).map((mr) => [mr.reviewPath, mr]));
   let names = [];
@@ -148,12 +173,13 @@ async function listReviews() {
       reviewedAt: mr?.reviewedAt ?? st.mtime.toISOString(),
       tracked: Boolean(mr),
       jira: mr?.jira ?? null,
+      myState: newerState(mr?.myState ?? null, mr ? stateOverrides.get(mr.iid) ?? null : null),
     };
   }));
   items.sort(byPriorityThenDate);
   // https://host/group/project, from any tracked MR url; used to link !123 and file paths.
   const projectUrl = (status?.mrs ?? []).map((mr) => mr.web_url?.match(/^(.*)\/-\/merge_requests\/\d+/)?.[1]).find(Boolean) ?? null;
-  return { status, items, stacks: buildStacks(status), projectUrl, jiraBaseUrl: JIRA_BASE_URL ? JIRA_BASE_URL.replace(/\/+$/, '') : null, settings: loadSettings(), allowPosting: ALLOW_POSTING === 'true', allowPush: ALLOW_PUSH === 'true', posted: await loadPosted() };
+  return { status, items, stacks: buildStacks(status), projectUrl, jiraBaseUrl: JIRA_BASE_URL ? JIRA_BASE_URL.replace(/\/+$/, '') : null, settings: loadSettings(), settingsDefaults: envDefaults(), allowPosting: ALLOW_POSTING === 'true', allowPush: ALLOW_PUSH === 'true', posted: await loadPosted() };
 }
 
 const clients = new Set();
@@ -229,7 +255,7 @@ async function putSettings(req, res) {
   const body = await readJsonBody(req, res);
   if (body === null) return undefined;
   try {
-    return json(res, 200, await saveSettings(body));
+    return json(res, 200, { settings: await saveSettings(body), defaults: envDefaults() });
   } catch (err) {
     return json(res, 400, { error: String(err.message) });
   }
@@ -286,6 +312,7 @@ async function postComment(req, res) {
     }
     posted[key] = { at: new Date().toISOString(), iid: mr.iid, state: 'draft', draftId: draft.id, body: text, mrUrl: mr.web_url, url: mr.web_url, inline: hasTarget ? inline : undefined };
     await savePosted(posted);
+    refreshState(mr);
     broadcast();
     return json(res, 200, posted[key]);
   });
@@ -296,36 +323,6 @@ async function postComment(req, res) {
 // Replies { slug, discussionId, body } to a thread of the tracked MR, as a draft
 // of the pending review. The discussion must belong to that MR: GitLab rejects
 // an id from another one, and the MR itself comes from status.json.
-async function replyToDiscussion(req, res) {
-  if (ALLOW_POSTING !== 'true') return json(res, 403, { error: 'posting is disabled (ALLOW_POSTING=false)' });
-  const input = await readJsonBody(req, res);
-  if (input === null) return undefined;
-  const { slug, discussionId, body } = input;
-  if (typeof slug !== 'string' || !SLUG_RE.test(slug) || slug.includes('..') || typeof discussionId !== 'string' || !/^[0-9a-f]{8,64}$/.test(discussionId)) {
-    return json(res, 400, { error: 'bad slug or discussionId' });
-  }
-  if (typeof body !== 'string' || !body.trim() || body.length > 10_000) {
-    return json(res, 400, { error: 'body must be a non-empty string under 10000 characters' });
-  }
-  const run = postQueue.then(async () => {
-    const mr = await trackedMr(slug);
-    if (!mr) return json(res, 404, { error: 'no tracked merge request for this review' });
-    let draft;
-    try {
-      draft = await createDraftReply(mr.iid, discussionId, body.trim());
-    } catch (err) {
-      return json(res, 502, { error: String(err.message).slice(0, 300) });
-    }
-    const posted = await loadPosted();
-    posted[`${slug}:reply-${draft.id}`] = { at: new Date().toISOString(), iid: mr.iid, state: 'draft', draftId: draft.id, body: body.trim(), mrUrl: mr.web_url, url: mr.web_url };
-    await savePosted(posted);
-    broadcast();
-    return json(res, 200, { ok: true, draftId: draft.id });
-  });
-  postQueue = run.catch(() => {});
-  return run;
-}
-
 // Submits the drafts of one review as a real GitLab review, with an optional
 // summary note and an `action` (comment, approve, request_changes). Like
 // postComment(), the MR comes from status.json.
@@ -374,6 +371,7 @@ async function submitReview(req, res) {
       posted[key] = { ...rest, state: 'published', at: new Date().toISOString(), url: noteId ? `${info.mrUrl}#note_${noteId}` : info.mrUrl };
     }
     await savePosted(posted);
+    refreshState(mr);
     broadcast();
     // The comments are out either way: say so, so the user does not submit them twice.
     if (approveError) return json(res, 502, { error: `Comments published, but the approval failed: ${approveError}` });
@@ -423,11 +421,39 @@ async function mutateDraft(req, res, pathname) {
       else posted[entry[0]] = { ...entry[1], body: text };
       await savePosted(posted);
     }
+    refreshState(mr);
     broadcast();
     return json(res, 200, { ok: true });
   });
   postQueue = run.catch(() => {});
   return run;
+}
+
+// One chat question at a time: each is a Claude run with a cost.
+let chatBusy = false;
+async function chatAboutStop(req, res) {
+  const input = await readJsonBody(req, res);
+  if (input === null) return undefined;
+  const parsed = parseChatInput(input);
+  if (parsed.error) return json(res, 400, { error: parsed.error });
+  const { slug, stopId, question, history } = parsed;
+  if (!SLUG_RE.test(slug) || slug.includes('..')) return json(res, 400, { error: 'bad slug' });
+  const mr = await trackedMr(slug);
+  if (!mr) return json(res, 404, { error: 'no tracked merge request for this review' });
+  const shape = await loadShape(REVIEWS_DIR, slug, '');
+  const stop = (shape.tour ?? []).find((s) => s.id === stopId);
+  if (!stop) return json(res, 404, { error: 'no such stop in this review' });
+  if (chatBusy) return json(res, 429, { error: 'another question is being answered, try again in a moment' });
+  chatBusy = true;
+  try {
+    const files = filesForPatterns((await listMergeRequestDiffs(mr.iid)).map(toDiffFile), stop.files);
+    const prompt = buildChatPrompt({ title: mr.title, shape, stop, files, history, question });
+    return json(res, 200, { answer: await askAboutStop({ iid: mr.iid, prompt }) });
+  } catch (err) {
+    return json(res, 502, { error: String(err.message).slice(0, 300) });
+  } finally {
+    chatBusy = false;
+  }
 }
 
 // Re-runs the review (or the comment triage, for my own MRs) of one tracked MR. The
@@ -491,11 +517,11 @@ async function pushTriageFixes(req, res) {
 }
 
 async function handle(req, res) {
-  const { pathname } = new URL(req.url, 'http://localhost');
+  const { pathname, searchParams } = new URL(req.url, 'http://localhost');
   if (req.method === 'PUT' && pathname === '/api/settings') return putSettings(req, res);
   if (req.method === 'POST' && pathname === '/api/post') return postComment(req, res);
-  if (req.method === 'POST' && pathname === '/api/reply') return replyToDiscussion(req, res);
   if (req.method === 'POST' && pathname === '/api/submit-review') return submitReview(req, res);
+  if (req.method === 'POST' && pathname === '/api/chat') return chatAboutStop(req, res);
   if (req.method === 'POST' && pathname === '/api/rerun') return rerunReview(req, res);
   if (req.method === 'POST' && pathname === '/api/push') return pushTriageFixes(req, res);
   if ((req.method === 'PUT' || req.method === 'DELETE') && pathname.startsWith('/api/drafts/')) return mutateDraft(req, res, pathname);
@@ -520,41 +546,6 @@ async function handle(req, res) {
   }
 
   // The MR's GitLab conversation, for the studio's discussion panel.
-  if (pathname.startsWith('/api/discussions/')) {
-    let slug;
-    try {
-      slug = decodeURIComponent(pathname.slice('/api/discussions/'.length));
-    } catch {
-      return json(res, 400, { error: 'bad slug' });
-    }
-    if (!SLUG_RE.test(slug) || slug.includes('..')) return json(res, 400, { error: 'bad slug' });
-    const mr = await trackedMr(slug);
-    if (!mr) return json(res, 404, { error: 'no tracked merge request for this review' });
-    try {
-      return json(res, 200, { discussions: await listDiscussions(mr.iid) });
-    } catch (err) {
-      return json(res, 502, { error: String(err.message).slice(0, 300) });
-    }
-  }
-
-  // Where the triage's local fixes stand against the MR branch on origin.
-  if (pathname.startsWith('/api/fixes/')) {
-    let slug;
-    try {
-      slug = decodeURIComponent(pathname.slice('/api/fixes/'.length));
-    } catch {
-      return json(res, 400, { error: 'bad slug' });
-    }
-    if (!SLUG_RE.test(slug) || slug.includes('..')) return json(res, 400, { error: 'bad slug' });
-    const mr = await triagedMr(slug);
-    if (!mr) return json(res, 404, { error: 'no tracked triage for this slug' });
-    try {
-      return json(res, 200, await fixesStatus(mr));
-    } catch (err) {
-      return json(res, 502, { error: String(err.stderr || err.message).trim().slice(0, 300) });
-    }
-  }
-
   if (pathname.startsWith('/api/drafts/')) {
     if (ALLOW_POSTING !== 'true') return json(res, 403, { error: 'posting is disabled (ALLOW_POSTING=false)' });
     let slug;
@@ -569,6 +560,47 @@ async function handle(req, res) {
     if (!mr) return json(res, 404, { error: 'no tracked merge request for this review' });
     try {
       return json(res, 200, { drafts: await listDraftNotes(mr.iid) });
+    } catch (err) {
+      return json(res, 502, { error: String(err.message).slice(0, 300) });
+    }
+  }
+
+  const threadsMatch = /^\/api\/reviews\/([^/]+)\/threads$/.exec(pathname);
+  if (threadsMatch) {
+    const slug = decodeURIComponent(threadsMatch[1]);
+    if (!SLUG_RE.test(slug) || slug.includes('..')) return json(res, 400, { error: 'bad slug' });
+    const mr = await trackedMr(slug);
+    if (!mr) return json(res, 404, { error: 'no tracked merge request for this review' });
+    try {
+      return json(res, 200, { threads: await reviewThreads(mr) });
+    } catch (err) {
+      return json(res, 502, { error: String(err.message).slice(0, 300) });
+    }
+  }
+
+  const diffMatch = /^\/api\/reviews\/([^/]+)\/diff$/.exec(pathname);
+  if (diffMatch) {
+    const slug = decodeURIComponent(diffMatch[1]);
+    if (!SLUG_RE.test(slug) || slug.includes('..')) return json(res, 400, { error: 'bad slug' });
+    const mr = await trackedMr(slug);
+    if (!mr) return json(res, 404, { error: 'no tracked merge request for this review' });
+    const versionId = searchParams.get('version');
+    const mode = searchParams.get('mode') === 'since' ? 'since' : 'full';
+    if (versionId && !/^[\w-]+$/.test(versionId)) return json(res, 400, { error: 'bad version' });
+    try {
+      // The live diff, unless it is about what an earlier review saw or what changed since it.
+      if (versionId || mode === 'since') {
+        const { status, ...body } = await reviewDiff(mr, slug, { versionId, mode, stopId: searchParams.get('stop') });
+        return json(res, status, body);
+      }
+      let files = (await listMergeRequestDiffs(mr.iid)).map(toDiffFile);
+      const stopId = searchParams.get('stop');
+      if (stopId) {
+        const shape = await loadShape(REVIEWS_DIR, slug, '');
+        const stop = (shape.tour ?? []).find((s) => s.id === stopId);
+        files = stop ? filesForPatterns(files, stop.files) : [];
+      }
+      return json(res, 200, { files });
     } catch (err) {
       return json(res, 502, { error: String(err.message).slice(0, 300) });
     }

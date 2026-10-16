@@ -37,7 +37,7 @@ The bot brings no review logic of its own: the commands, agents and skills are t
 ## Capabilities and Constraints
 
 - Works with any markdown report. Richer display (verdict badge, Critical / Important counts, overview, "Comment to post" blocks) when the report follows the optional format in `examples/commands/review.md`; otherwise reviews are listed as "Unrated".
-- Studio features in place: card grid with three sizes, tabs for the reviews being read, a sidebar of all reviews, a command palette, copy / edit / opt-in post of the proposed comment, semantic typography (semfont) that can be toggled off, live updates, poll-interval setting.
+- Studio features in place: a Home that groups reviews by whose turn it is, tabs for the reviews being read, a command palette, copy / edit / opt-in post of the proposed comment, a guided tour with a diff pane and a per-stop chat, live updates, poll-interval setting.
 - Interface language is English. This is a binding requirement: no French in the UI.
 - Reports may be long and contain unbroken paths and identifiers; they must never break the layout.
 - Browsers reserve some shortcuts (⌘W cannot be intercepted); the studio uses Ctrl+W, ⌥W and ⌘⌥W to close a review tab.

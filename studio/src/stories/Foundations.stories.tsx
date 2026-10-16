@@ -71,10 +71,6 @@ export const Typography: Story = {
         <p className="text-xs text-fg-muted">Label 0.75rem: metadata, counters, badges.</p>
       </div>
       <div>
-        <p className="mb-1 text-xs uppercase tracking-wide text-fg-muted">Review text · Recursive (semantic axes)</p>
-        <p className="semfont max-w-prose text-base leading-relaxed">The review itself is set in Recursive, whose weight and slant follow the meaning of the words: a blocker reads heavier than a maybe.</p>
-      </div>
-      <div>
         <p className="mb-1 text-xs uppercase tracking-wide text-fg-muted">Code · mono</p>
         <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-sm dark:bg-zinc-800">studio/server.mjs:301</code>
       </div>

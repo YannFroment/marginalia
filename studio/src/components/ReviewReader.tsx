@@ -1,8 +1,8 @@
-import { Fragment, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { submitReview, type BotStatus, type PostedInfo, type ReviewContent, type ReviewItem } from '../lib/api';
-import { usePersistentState } from '../lib/layout';
 import { LinkContext } from '../lib/links';
+import { cn } from '../lib/utils';
 import { useRerun } from '../lib/useRerun';
 import { useReviewVersions } from '../lib/useReviewVersions';
 import { useSectionState } from '../lib/useSectionState';
@@ -11,15 +11,17 @@ import { PostContext } from '../lib/reviewContexts';
 import { extractMeta, rankOf, SUPPORTING_RANK, splitSections } from '../lib/reviewSections';
 import { CollapsibleCard } from './CollapsibleCard';
 import { ConfirmSubmit } from './ConfirmSubmit';
-import { Discussion } from './Discussion';
 import { FindingsPanel } from './FindingsPanel';
 import { FixesPanel } from './FixesPanel';
-import { GlanceBody, Md } from './ReviewMarkdown';
 import { ReaderHeader } from './ReaderHeader';
+import { ReportSections } from './ReportSections';
 import { ReaderNotices } from './ReaderNotices';
-import { ReaderSidePanel } from './ReaderSidePanel';
+import { ReviewOverview } from './ReviewOverview';
+import { ReviewTour } from './ReviewTour';
+import { TourSkeleton } from './ReviewSkeleton';
+import { Button } from './ui/Button';
 
-export function ReviewReader({ item, review: currentReview, projectUrl, jiraBaseUrl, allowPosting, allowPush, live, posted, reload }: { item: ReviewItem | undefined; review: ReviewContent | null; projectUrl: string | null; jiraBaseUrl: string | null; allowPosting: boolean; allowPush: boolean; live: BotStatus['current']; posted: Record<string, PostedInfo>; reload: () => void }) {
+export function ReviewReader({ item, review: currentReview, reviewError, onRetry, projectUrl, allowPosting, allowPush, live, posted, reload }: { item: ReviewItem | undefined; review: ReviewContent | null; reviewError: string | null; onRetry: () => void; projectUrl: string | null; allowPosting: boolean; allowPush: boolean; live: BotStatus['current']; posted: Record<string, PostedInfo>; reload: () => void }) {
   const [submitting, setSubmitting] = useState(false);
   const { versions, versionId, setVersionId, oldReview } = useReviewVersions(item?.slug, item?.reviewedAt);
   const viewingOld = versionId !== null;
@@ -32,10 +34,14 @@ export function ReviewReader({ item, review: currentReview, projectUrl, jiraBase
   const postCtx = useMemo(() => ({ allowPosting, slug: item?.slug ?? null, iid: item?.tracked ? item.iid : null, posted, reload, locked, findings: shape?.findings ?? [] }), [allowPosting, item?.slug, item?.tracked, item?.iid, posted, reload, locked, shape]);
   const linkCtx = useMemo(() => ({ projectUrl, branch: item?.branch ?? null, mrWebUrl: item?.webUrl ?? null }), [projectUrl, item?.branch, item?.webUrl]);
   const meta = useMemo(() => extractMeta(markdown ?? ''), [markdown]);
-  // Findings the person can't reach from the report's own text (no comment card for them there).
+  // Findings the person can't reach otherwise: with a tour, the ones no chapter holds; without one,
+  // those with no comment card in the report's own text.
   const loose = useMemo(() => {
+    const findings = shape?.findings ?? [];
+    const tour = shape?.tour ?? [];
+    if (tour.length) return findings.filter((f) => !tour.some((s) => s.findingIds.includes(f.id)));
     const text = squash(markdown ?? '');
-    return (shape?.findings ?? []).filter((f) => !f.comment || !text.includes(squash(f.comment)));
+    return findings.filter((f) => !f.comment || !text.includes(squash(f.comment)));
   }, [markdown, shape]);
   const { intro, sections } = useMemo(() => splitSections(meta.markdown), [meta]);
   const ordered = useMemo(
@@ -43,16 +49,20 @@ export function ReviewReader({ item, review: currentReview, projectUrl, jiraBase
     [sections],
   );
   const firstSupporting = ordered.find((s) => rankOf(s.title) === SUPPORTING_RANK && ordered.some((o) => rankOf(o.title) < SUPPORTING_RANK))?.id;
-  const { overrides, setOverrides, isOpen, allOpen, setAll, jump } = useSectionState(sections);
-  const [semantic, setSemantic] = usePersistentState('mr-review-viewer:semantic-on', true);
-  const [panelOpen, setPanelOpen] = usePersistentState('mr-review-viewer:panel-open', true);
+  const { overrides, setOverrides, isOpen } = useSectionState(sections);
+  // A review with a tour is read through its tour; the written report only stands in for one without.
+  const hasTour = (shape?.tour?.length ?? 0) > 0;
 
   return (
     <LinkContext.Provider value={linkCtx}>
     <PostContext.Provider value={postCtx}>
     <div className="px-6 py-6">
+      {/* A review with a tour fits the window: header and overview on top, the tour taking the rest
+          with each pane scrolling inside it. What comes after is below, on the page. */}
+      <div className={cn((hasTour || markdown === null) && 'lg:flex lg:h-[calc(100vh-var(--chrome-h)-3rem)] lg:flex-col')}>
       <ReaderHeader
         item={item}
+        risk={shape?.risk ?? null}
         showSubmit={allowPosting && Boolean(item?.tracked) && (draftCount > 0 || item?.kind === 'review')}
         draftCount={draftCount}
         onSubmit={() => setSubmitting(true)}
@@ -61,29 +71,25 @@ export function ReviewReader({ item, review: currentReview, projectUrl, jiraBase
         onVersion={setVersionId}
         locked={locked}
         onRerun={rerun}
-        semantic={semantic}
-        onSemantic={() => setSemantic((v) => !v)}
-        panelOpen={panelOpen}
-        onPanel={() => setPanelOpen((v) => !v)}
       />
+      {markdown === null && (reviewError && !viewingOld ? (
+        <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-zinc-200 p-4 text-sm text-fg-muted dark:border-zinc-800">
+          <span>This review could not be loaded ({reviewError}).</span>
+          <Button size="sm" onClick={onRetry}>Try again</Button>
+        </div>
+      ) : <TourSkeleton />)}
+      {markdown !== null && shape?.overview && <ReviewOverview overview={shape.overview} />}
+      {markdown !== null && hasTour && (
+          <ReviewTour stops={shape!.tour!} findings={shape!.findings} diff={item?.tracked && item.iid ? { slug: item.slug, version: versionId, key: item.reviewedAt, startSince: item.stale } : null} post={item?.tracked && item.iid && !viewingOld ? { slug: item.slug, iid: item.iid, allowPosting, locked, posted, reload } : null} />
+      )}
+      </div>
 
-      {markdown === null ? (
-        <p className="text-fg-muted">Loading…</p>
-      ) : (
-        <div className="flex gap-8">
-          <article className="mx-auto w-full min-w-0 max-w-[80ch] space-y-3">
+      {markdown !== null && (
+        <article className="mx-auto w-full min-w-0 max-w-[80ch] space-y-3">
             <ReaderNotices viewingOld={viewingOld} onBackToLatest={() => setVersionId(null)} shape={shape} />
-            {intro.trim() && <Md semantic={semantic}>{intro}</Md>}
-            {ordered.map((s) => (
-              <Fragment key={s.id}>
-              {s.id === firstSupporting && <p className="px-1 pt-3 text-xs font-medium uppercase tracking-wide text-fg-subtle">Supporting detail</p>}
-              <CollapsibleCard id={s.id} title={s.title} open={isOpen(s)} onOpenChange={(o) => setOverrides((prev) => ({ ...prev, [s.id]: o }))}>
-                {/at a glance/i.test(s.title) ? <GlanceBody body={s.body} semantic={semantic} /> : <Md semantic={semantic}>{s.body}</Md>}
-              </CollapsibleCard>
-              </Fragment>
-            ))}
+            {!hasTour && <ReportSections intro={intro} sections={ordered} firstSupporting={firstSupporting} isOpen={isOpen} setOverrides={setOverrides} />}
             {item?.tracked && item.iid && !viewingOld && loose.length > 0 && (
-              <CollapsibleCard id="findings" title={`Findings to comment on (${loose.length})`} open={overrides.findings ?? true} onOpenChange={(o) => setOverrides((prev) => ({ ...prev, findings: o }))}>
+              <CollapsibleCard id="findings" title={`${hasTour ? 'Other findings' : 'Findings to comment on'} (${loose.length})`} open={overrides.findings ?? true} onOpenChange={(o) => setOverrides((prev) => ({ ...prev, findings: o }))}>
                 <FindingsPanel findings={loose} slug={item.slug} iid={item.iid} allowPosting={allowPosting} locked={locked} posted={posted} reload={reload} />
               </CollapsibleCard>
             )}
@@ -92,15 +98,7 @@ export function ReviewReader({ item, review: currentReview, projectUrl, jiraBase
                 <FixesPanel slug={item.slug} iid={item.iid} allowPush={allowPush} locked={locked} refreshKey={item.reviewedAt} />
               </CollapsibleCard>
             )}
-            {item?.tracked && item.kind === 'review' && !viewingOld && (
-              <CollapsibleCard id="discussion" title="Discussion on GitLab" open={overrides.discussion ?? true} onOpenChange={(o) => setOverrides((prev) => ({ ...prev, discussion: o }))}>
-                <Discussion slug={item.slug} canReply={allowPosting && !locked} refreshKey={`${item.reviewedAt}:${draftCount}`} reload={reload} />
-              </CollapsibleCard>
-            )}
           </article>
-
-          <ReaderSidePanel item={item} live={live} open={panelOpen} projectUrl={projectUrl} jiraBaseUrl={jiraBaseUrl} ticket={meta.ticket} sections={ordered} allOpen={allOpen} onToggleAll={() => setAll(!allOpen)} onJump={jump} />
-        </div>
       )}
     </div>
     {submitting && item?.iid && (

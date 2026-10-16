@@ -1,6 +1,5 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
-@import '@fontsource-variable/recursive/slnt.css';
 
 @theme {
   --font-sans: ui-sans-serif, -apple-system, 'Inter', 'Segoe UI', system-ui, sans-serif;
@@ -74,15 +73,6 @@ html {
   .hljs-deletion { color: #f87171; }
 }
 
-/* semfont's editorial theme drives two axes, wght and slnt; only those are loaded. */
-.semfont {
-  font-family: 'Recursive Variable', ui-sans-serif, system-ui, sans-serif;
-}
-.semfont code,
-.semfont pre {
-  font-family: var(--font-mono);
-}
-
 /* Tailwind's preflight resets buttons to cursor: default. */
 @layer base {
   button:not(:disabled),
@@ -105,5 +95,35 @@ html {
   @media (pointer: coarse) {
     min-height: 2.75rem;
     min-width: 2.75rem;
+  }
+}
+
+/* Loading skeletons: a soft sweep of light across a bar. Still under reduced motion. */
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent);
+  animation: shimmer 1.5s ease-in-out infinite;
+  animation-delay: inherit;
+}
+@media (prefers-color-scheme: dark) {
+  .shimmer::after {
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.08), transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shimmer::after {
+    animation: none;
+  }
+}
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
   }
 }
