@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const { markdownToAdf, inline } = await import('../lib/adf.mjs');
-const { digestReference, buildPrompt, parseSuggestions, nextArea } = await import('../lib/suggest-prompt.mjs');
+const { digestReference, buildPrompt, parseSuggestions, nextArea, buildVerifyPrompt, parseVerdict } = await import('../lib/suggest-prompt.mjs');
 
 const body = `## Context
 
@@ -92,4 +92,12 @@ test('areas are scanned in turn', () => {
   assert.equal(nextArea(['a', 'b'], undefined), 'a');
   assert.equal(nextArea(['a', 'b'], 'a'), 'b');
   assert.equal(nextArea(['a', 'b'], 'b'), 'a');
+});
+
+test('the check run gets the draft and its files, and its verdict is read strictly', () => {
+  const prompt = buildVerifyPrompt({ title: 'T', body: 'B', files: ['a.tsx:3'] });
+  for (const part of ['a.tsx:3', '## Title', 'T', '## Body', '"ok"']) assert.ok(prompt.includes(part), part);
+  assert.deepEqual(parseVerdict('{"ok": true, "problems": []}'), { ok: true, problems: [] });
+  assert.equal(parseVerdict('{"ok": true, "problems": ["line 3 is 30px"]}').ok, false);
+  assert.deepEqual(parseVerdict('sorry'), { ok: false, problems: ['the verification answer could not be read'] });
 });

@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
 import { toast } from 'sonner';
-import { ChevronDown, ExternalLink, Lightbulb, Loader2, Pencil, Send, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ExternalLink, Lightbulb, Loader2, Pencil, Send, ShieldCheck, X } from 'lucide-react';
 import { dismissSuggestion, postSuggestion, runSuggestions, type Suggestion, type SuggestionsPayload } from '../lib/api';
 import { NoteMarkdown } from './NoteMarkdown';
 import { Button } from './ui/Button';
@@ -68,10 +68,19 @@ function SuggestionCard({ s, canPost, project }: { s: Suggestion; canPost: boole
           <span className="mt-0.5 block text-xs text-fg-muted">{s.why}</span>
         </span>
         {s.principle && <span className="max-w-full rounded bg-violet-500/10 px-1.5 py-0.5 text-xs text-violet-700 dark:text-violet-300">{s.principle}</span>}
+        {s.check && (s.check.ok
+          ? <span title="Every claim was re-read against the code" className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs text-emerald-700 dark:text-emerald-300"><ShieldCheck className="size-3" aria-hidden />Checked</span>
+          : <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-800 dark:text-amber-300"><AlertTriangle className="size-3" aria-hidden />{s.check.problems.length} to check</span>)}
         {posted && <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-0.5 font-mono text-xs text-emerald-700 dark:text-emerald-300">{s.key}</span>}
       </button>
       {open && (
         <div id={panelId} className="border-t border-zinc-100 px-4 pb-4 pt-3 dark:border-zinc-800">
+          {s.check && !s.check.ok && (
+            <div role="note" className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-800 dark:bg-amber-950/40">
+              <p className="font-medium">Re-reading the code found statements to fix before posting:</p>
+              <ul className="mt-1 list-disc pl-5">{s.check.problems.map((p) => <li key={p}>{p}</li>)}</ul>
+            </div>
+          )}
           {s.files.length > 0 && <p className="mb-3 font-mono text-xs text-fg-muted [overflow-wrap:anywhere]">{s.files.join(' · ')}</p>}
           {editing ? (
             <div className="space-y-2">
