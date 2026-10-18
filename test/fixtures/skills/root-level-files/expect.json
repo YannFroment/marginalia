@@ -1,0 +1,6 @@
+{ "source": "markdown", "verdict": "REQUEST_CHANGES", "counts": { "critical": 0, "important": 3, "suggestion": 0, "info": 0 }, "postable": 1,
+  "locations": [
+    { "title": ".gitlab-ci.yml:225 The job is blocking on merge requests, which the ticket does not ask for.", "path": ".gitlab-ci.yml", "line": 225 },
+    { "title": "package.json pins a version that the lockfile does not match.", "path": "package.json", "line": null },
+    { "title": "See https://example.com/docs/config.json and Next.js for background.", "path": null, "line": null }
+  ] }

@@ -1,0 +1,7 @@
+<<<REVIEW_FILE path="report.md">>>
+**Verdict:** APPROVE
+
+## Suggestions
+
+- Consider a shorter name for `src/a/long-name.ts:3`.
+<<<END_REVIEW_FILE>>>

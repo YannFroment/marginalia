@@ -45,11 +45,39 @@ collected in this order:
 A tool refused in headless mode fails the run with a message pointing at
 `CLAUDE_EXTRA_ALLOWED_TOOLS` in `.env`.
 
-**Studio format (optional).** The studio works with any markdown. It shows
-richer cards if the report has `**Verdict:** APPROVE|REQUEST CHANGES`,
-`### Critical` / `### Important` bullet sections, an `**Overview:**` line and
-`**Comment to post:**` blockquotes (see `examples/commands/review.md`). The first `path[:line]` of the bullet above a comment is where *Post to GitLab* anchors it in the diff. Without
-them, reviews are listed as "Unrated".
+**Studio format (optional).** The studio works with any markdown, and gives the
+same experience whatever command wrote it. The bot turns every report into one
+normalized shape (`lib/findings.mjs`), stored next to it as `<slug>.findings.json`:
+a verdict, a summary, and findings (`id`, `severity`, `title`, `path`, `line`,
+`body`, `comment`). The studio lists, counts and posts from that shape, never from
+the report's wording. It is read, in order of preference, from:
+
+1. `.marginalia-findings.json`, which the contract asks the command to write
+   (recommended; any extra field is ignored, and unknown severities such as
+   `blocker`/`major`/`nit` are mapped):
+
+   ```json
+   { "verdict": "REQUEST_CHANGES", "summary": "One or two sentences.",
+     "findings": [{ "id": "optional", "severity": "critical", "title": "Short title",
+                    "path": "src/app/page.tsx", "line": 42, "body": "What and why.",
+                    "comment": "The comment to post, ready as is." }] }
+   ```
+
+2. the markdown itself: a `**Verdict:** …` line (French labels work too),
+   `## Critical` / `## Important` / `## Suggestions` sections with one bullet per
+   finding, an optional `**Overview:**` line, and a blockquote under a bullet as its
+   comment. The first `path[:line]` of the bullet is where *Add to review* anchors
+   it in the diff (see `examples/commands/review.md`);
+3. nothing: the studio says so in a notice, and the findings it could not read are
+   left out of the per-finding "Add to review".
+
+A finding's `id` comes from its file and title, not from the wording of its
+comment, so it stays the same when a re-run rewords it. The bot warns (in its log
+and in the studio) when a report could only be read partially.
+
+To check that a new way of writing reviews works, add a folder to
+`test/fixtures/skills/` (`report.md`, optionally `findings.json` or `stdout.txt`,
+and an `expect.json`): `npm test` runs the whole contract against it.
 
 ## Requirements
 
@@ -173,8 +201,16 @@ a stack (rebuilt from the open MR list on every poll). For these:
   `marginalia/<branch-slug>` (the bot worktree shares its git object
   database with `REPO_LOCAL_PATH`, so this branch is visible from your real
   checkout too, e.g. `git log marginalia/<branch-slug>` or
-  `git cherry-pick` from there — nothing is pushed to GitLab). Review the
-  commit before pushing it yourself.
+  `git cherry-pick` from there — nothing is pushed by the bot). The studio's
+  *Fixes to push* card checks them against the MR branch on origin: *ready*
+  (on top of the current head), *pushed*, or *outdated* (the branch moved
+  since the triage: re-run it). With `ALLOW_PUSH=true` it pushes them,
+  fast-forward only, after a confirmation. A triage that commits nothing
+  moves the previous fixes aside to `refs/marginalia/superseded/<branch-slug>`,
+  and a triage during which the branch moved logs a warning.
+- **Everything the triage writes is in English** (report, drafted replies,
+  findings, commit messages): the bot's injected contract says so, whatever
+  language the command or the comments are in.
 - State (last peer-comment timestamp triaged per MR) is kept in `state.json`
   under `mineComments`, separately from the SHA-based state above.
 
@@ -187,17 +223,26 @@ track several MRs across polls in the logs.
 **Marginalia** is the local reader for the generated reviews, at `http://localhost:4477`
 (`STUDIO_PORT`, bound to `127.0.0.1`, read-only). Vite + React + Tailwind
 front end (`studio/`), served as static files by `studio/server.mjs`, which
-`poll.mjs` starts at boot. It lists reviews as cards (verdict, Critical /
-Important counts, unread dot; most urgent Jira ticket first when `JIRA_*` is
-set in `.env`, newest first otherwise), renders each one with a table of contents and
-collapsible sections, has a copy button on the "Comment to post" blocks, and
+`poll.mjs` starts at boot. Home lists the reviews as rows grouped by whose turn it is, read from GitLab and not from what this
+browser has opened: *Needs your first review* (you have not reviewed it on GitLab), *Returned to you*
+(the author pushed or answered after your review), *Review to send* (your comments wait in a pending
+review), *Comments on your merge requests*, *Waiting on others* and, folded, *Done*. The poll reads
+that standing for each MR (your notes, your approval or request for changes, pushes, open threads,
+your drafts) and the studio refreshes the one MR right after you post, submit or delete a draft. A row
+shows the author, what you decided, the Critical / Important counts, the risk, the verdict and the age (most urgent Jira ticket first when all three `JIRA_*` are
+set in `.env`; `JIRA_BASE_URL` alone only links the ticket, newest first otherwise). A review opens as a
+guided tour with its diff, has a copy button on the "Comment to post" blocks, and
 a `⌘K` search. It refreshes live when a review file or `status.json` changes.
 
 ```bash
 npm run studio:install   # once
 npm run studio:build     # after any change under studio/src
 npm run studio:dev       # Vite dev server with hot reload (bot must be running)
+npm run dev              # bot + Vite dev server in one terminal; Ctrl+C stops both
 ```
+
+`npm run dev` starts its own bot: stop the background one first
+(`npm run autostart -- --uninstall`, or `pm2 stop marginalia`), or both will poll and the second can't bind the studio port.
 
 The poll interval can be changed from the studio's top bar ("Poll every…").
 It's saved to `settings.json` (gitignored) and overrides `POLL_INTERVAL_MINUTES`,
@@ -206,13 +251,29 @@ away. This is the studio's only write endpoint (`PUT /api/settings`); it
 refuses requests whose `Host` or `Origin` isn't the studio itself.
 
 **Posting (opt-in).** With `ALLOW_POSTING=true` in `.env`, each "Comment to post"
-block gets a *Post to GitLab* button. It opens a confirmation showing the final
-(possibly edited) text and the target MR, then posts a general comment on that MR
-through the GitLab API with your `GITLAB_TOKEN`, i.e. as you. The MR is resolved
-server-side from `status.json`, never from the request. Posted comments are
-remembered in `posted.json` (gitignored) so the same one can't be posted twice,
-and shown with a "Posted" badge linking to the note. Off by default: without
-the flag the button doesn't exist and `POST /api/post` answers 403.
+block gets an *Add to review* button. It opens a confirmation showing the final
+(possibly edited) text and the target MR, then creates a GitLab **draft note**
+(inline on the file/line when it can, else general) through the API with your
+`GITLAB_TOKEN`. Drafts are private to you: nothing is visible to the MR author
+until the *Submit review (N)* button, which asks for an optional summary and
+publishes everything as one real GitLab review (`draft_notes/bulk_publish`; drafts
+started in GitLab's own UI are published too). The MR is resolved server-side from
+`status.json`, never from the request. Comments are remembered in `posted.json`
+(gitignored) so the same one can't be added twice, and shown with an "In pending
+review" then "Posted" badge. Off by default: without the flag the buttons don't
+exist and `POST /api/post` and `POST /api/submit-review` answer 403.
+
+**Design system (Scholia).** The studio's UI is documented in Storybook:
+`npm run studio:storybook` (port 6006). It holds the foundations from `DESIGN.md`
+(colours, type, radii, spacing) and a story per presentational component. Light and dark
+follow the OS, as in the app. `npm --prefix studio run build-storybook` builds a static copy
+(`studio/storybook-static`, gitignored).
+
+**API contract.** `studio/public/openapi.yaml` (OpenAPI 3.1) describes every endpoint between
+the server and the app. With the studio running, read it at
+<http://localhost:4477/api-docs.html> (rendered read-only: "Try it out" is off, since the write
+endpoints post to GitLab as you). Keep it in step with `studio/server.mjs` and
+`studio/src/lib/api.ts` when an endpoint changes.
 
 The "Review ready" notification and the SwiftBar menu open the studio (the
 notification falls back to VS Code if the studio isn't listening).
@@ -241,8 +302,26 @@ its cost, output tokens and turns are logged and appended to `runs.jsonl`
 
 ## Keeping the script running
 
-For it to survive a restart / a closed terminal, use a process manager, for
-example with `pm2`:
+On macOS, let it start at every login (a per-user LaunchAgent, no sudo, no
+extra tool). It runs `npm start`, so the studio is the built one on
+http://localhost:4477:
+
+```bash
+npm run autostart                  # install and start now; re-run after changing Node version
+npm run autostart -- --status      # running? pid?
+npm run autostart -- --uninstall   # stop and remove
+tail -f ~/Library/Logs/marginalia.log
+```
+
+The agent keeps the `PATH` of the shell you installed it from, so `claude`, `git`
+and `terminal-notifier` resolve the same way as in your terminal. It is restarted
+if it crashes. Stop it before `npm run dev`, or both will poll.
+
+If [SwiftBar](#menu-bar-icon-optional-macos) is installed, `npm run autostart` also
+opens it at login (a second agent, `com.marginalia.swiftbar`), so the menu bar icon
+comes up with the bot. Install SwiftBar first, or re-run `npm run autostart` after.
+
+Elsewhere, use a process manager, for example `pm2`:
 
 ```bash
 npm install -g pm2
@@ -265,6 +344,7 @@ icon, refreshed every 10 seconds:
 brew install --cask swiftbar
 # on first launch SwiftBar asks for a plugin folder, e.g. ~/SwiftBarPlugins
 ln -s ~/marginalia/swiftbar/marginalia.10s.sh ~/SwiftBarPlugins/
+npm run autostart   # optional: opens SwiftBar (and the bot) at every login
 ```
 
 | Icon | Meaning |
@@ -304,12 +384,22 @@ the previous one *finishes*, so a long review just pushes it back.
   with a webhook).
 - `GITLAB_TOKEN` lives in `.env`, never committed (already covered by
   `.gitignore`).
-- the review command isn't tool-restricted the way the old direct-prompt approach
-  was: it runs with `Agent`, `EnterWorktree`/`ExitWorktree`, `Write`, and the
-  GitLab/Atlassian connectors allowed, relying on the command and agent's own
-  prompt discipline ("never post to GitLab") rather than a hard sandbox. This
-  matches how you'd run it yourself interactively, but is a materially
-  different trust model than the previous read-only lockdown.
+- Runs are contained, not isolated in a VM. Each `claude -p` gets `--settings` built in
+  `lib/claude-sandbox.mjs`: the sandbox confines Bash (writes to the bot worktree, the
+  repo's `.git` and the reviews dir only; network to the GitLab host only; no read of
+  `~/.ssh`, `~/.aws`, the bot's `.env`), and deny rules keep the Read/Edit/Write tools
+  away from secrets, shell rc files and the trusted `.claude/{commands,agents,skills,hooks}`
+  of your checkout (the sandbox does not cover those tools). Git is allowed one
+  subcommand at a time (`lib/allowed-tools.mjs`), never `git config`, `git -c` or
+  `git push`, and credential-looking env vars are not passed (`CLAUDE_ENV_PASSTHROUGH`).
+  A command refused by the sandbox or the allow-list fails the run with its name in the
+  error. Git over SSH does not work *inside* the sandbox on macOS: the bot's own fetches
+  run outside it, so reviews are unaffected, but a command that runs `git fetch` itself
+  will fail. `CLAUDE_SANDBOX=false` turns the sandbox off; for stronger isolation, run
+  the whole bot in a container or VM.
+- The review command still runs with `Agent`, `EnterWorktree`/`ExitWorktree`, `Write`,
+  and the GitLab/Atlassian connectors allowed, relying on the command and agent's own
+  prompt discipline ("never post to GitLab") on top of the containment above.
 - No automatic retry if `claude -p` fails: check the server logs, the MR will
   be retried on the next poll as long as the SHA hasn't changed... except if
   the SHA hasn't changed, `state.json` won't have been updated either (the
@@ -320,8 +410,9 @@ the previous one *finishes*, so a long review just pushes it back.
   name(s) that server exposes for discussions aren't documented anywhere in
   the command files — if a triage run fails with a "tool not allowed" error,
   check the error for the tool name and add it to
-  `CLAUDE_MR_COMMENTS_ALLOWED_TOOLS` in `poll.mjs`.
+  `CLAUDE_MR_COMMENTS_ALLOWED_TOOLS` in `lib/allowed-tools.mjs`.
 - Fixes the triage command applies are committed locally in the bot worktree and
-  never pushed — you're expected to review and push them yourself from the
-  `marginalia/<branch-slug>` local branch (see Behaviour above). Nothing
-  automatically lands on the real MR branch.
+  never pushed by the bot — review them, then push them from the studio
+  (`ALLOW_PUSH=true`) or yourself from the `marginalia/<branch-slug>` local
+  branch (see Behaviour above). Nothing lands on the real MR branch without
+  that click.

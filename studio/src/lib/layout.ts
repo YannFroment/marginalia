@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 // State mirrored in localStorage (JSON). It can be unavailable or throw, so
 // every access is guarded and the UI works without it.
@@ -11,19 +11,21 @@ export function usePersistentState<T>(key: string, initial: T) {
       return initial;
     }
   });
-  const set = useCallback(
-    (next: T | ((prev: T) => T)) =>
-      setValue((prev) => {
-        const v = typeof next === 'function' ? (next as (p: T) => T)(prev) : next;
-        try {
-          localStorage.setItem(key, JSON.stringify(v));
-        } catch {
-          /* ignore */
-        }
-        return v;
-      }),
-    [key],
-  );
+  // Written after the state changes, not inside the updater (which React may run twice);
+  // the first render only read it, so nothing is written until the value is set.
+  const loaded = useRef(true);
+  useEffect(() => {
+    if (loaded.current) {
+      loaded.current = false;
+      return;
+    }
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      /* ignore */
+    }
+  }, [key, value]);
+  const set = useCallback((next: T | ((prev: T) => T)) => setValue(next), []);
   return [value, set] as const;
 }
 

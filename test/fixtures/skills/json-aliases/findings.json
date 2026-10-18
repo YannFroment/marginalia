@@ -1,0 +1,14 @@
+{
+  "verdict": "Changes requested",
+  "overview": "Two real problems and a nit.",
+  "findings": [
+    { "severity": "blocker", "title": "Retry never stops", "file": "./src/net/retry.ts", "line": 31, "description": "The loop has no upper bound.", "suggestedComment": "Please cap the retries." },
+    { "level": "major", "name": "Missing timeout", "path": "b/src/net/client.ts", "body": "No timeout on fetch." },
+    { "severity": "nit", "title": "Typo", "body": "See src/net/retry.ts:5 for a typo." },
+    { "severity": "weird", "title": "Odd severity", "body": "Unknown severity falls back to info." },
+    { "id": "same", "title": "Duplicate id A", "body": "a" },
+    { "id": "same", "title": "Duplicate id B", "body": "b" },
+    { "body": "" },
+    "not an object"
+  ]
+}

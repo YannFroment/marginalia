@@ -1,0 +1,5 @@
+Here is my review of the merge request. The change is small and focused.
+I read the diff carefully and I did not find a reason to block it, line 1.
+I read the diff carefully and I did not find a reason to block it, line 2.
+I read the diff carefully and I did not find a reason to block it, line 3.
+I read the diff carefully and I did not find a reason to block it, line 4.

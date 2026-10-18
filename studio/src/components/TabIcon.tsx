@@ -1,14 +1,9 @@
-import { AlertTriangle, AlertOctagon, CheckCircle2, Clock, HelpCircle, Loader2 } from 'lucide-react';
+import { AlertTriangle, Clock, Loader2 } from 'lucide-react';
+import { VERDICT_ICON } from '../lib/verdictIcons';
 import type { ReviewItem } from '../lib/api';
 import { cn } from '../lib/utils';
 
 export type BotState = 'pending' | 'reviewing' | 'deepening' | 'deepen-queued' | 'testing' | 'qa-queued' | 'failed' | 'skipped' | 'up_to_date' | undefined;
-
-export const VERDICT_ICON = {
-  APPROVE: { Icon: CheckCircle2, cls: 'text-emerald-600 dark:text-emerald-400', accent: 'border-t-emerald-500' },
-  REQUEST_CHANGES: { Icon: AlertOctagon, cls: 'text-red-600 dark:text-red-400', accent: 'border-t-red-500' },
-  OTHER: { Icon: HelpCircle, cls: 'text-fg-muted', accent: 'border-t-zinc-400' },
-} as const;
 
 // What the bot is doing with this review, shown before the verdict so live
 // work is visible at a glance: running, waiting, or broken.

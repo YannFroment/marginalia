@@ -76,14 +76,15 @@ export function StackBoard({ stack, items, current, isPosted, onSelect }: {
               return (
                 <tr
                   key={r.layer.iid}
-                  onClick={() => r.item && onSelect(r.item.slug)}
                   aria-current={active ? 'true' : undefined}
-                  className={cn('border-t border-zinc-100 dark:border-zinc-800', active && 'bg-blue-500/10', r.item && !active && 'cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50')}
+                  className={cn('relative border-t border-zinc-100 dark:border-zinc-800', active && 'bg-blue-500/10', r.item && !active && 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50')}
                 >
                   <td className="px-3 py-2 font-mono text-xs">#{r.layer.position}</td>
                   <td className="px-3 py-2">
                     {r.item ? (
-                      <a href={`#/${r.item.slug}`} onClick={(e) => e.stopPropagation()} className="hover:underline"><span className="font-mono text-xs text-fg-muted">!{r.layer.iid}</span> {r.layer.title}</a>
+                      // The link covers the whole row (the ::after), so the row is clickable for a mouse and
+                      // reachable from the keyboard through this one link, with no handler on the row itself.
+                      <a href={`#/${r.item.slug}`} onClick={() => onSelect(r.item!.slug)} className="hover:underline after:absolute after:inset-0 after:content-['']"><span className="font-mono text-xs text-fg-muted">!{r.layer.iid}</span> {r.layer.title}</a>
                     ) : (
                       <span><span className="font-mono text-xs text-fg-muted">!{r.layer.iid}</span> {r.layer.title}</span>
                     )}

@@ -1,0 +1,1 @@
+{ "source": "markdown", "verdict": "REQUEST_CHANGES", "counts": { "critical": 1, "important": 1, "suggestion": 1, "info": 0 }, "postable": 2, "warnings": ["The findings file was ignored"] }

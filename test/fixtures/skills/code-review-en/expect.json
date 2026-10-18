@@ -1,0 +1,6 @@
+{ "source": "markdown", "verdict": "REQUEST_CHANGES", "counts": { "critical": 1, "important": 1, "suggestion": 1, "info": 0 }, "postable": 2,
+  "locations": [
+    { "title": "Price mismatch on open", "path": "src/app/checkout/summary.tsx", "line": 42 },
+    { "title": "Boolean default stored as a code", "path": "src/app/checkout/options.ts", "line": 17 },
+    { "title": "Duplicated type", "path": "src/app/checkout/types.ts", "line": null }
+  ] }

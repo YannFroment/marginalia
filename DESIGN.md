@@ -52,7 +52,7 @@ typography:
     fontWeight: 400
     lineHeight: "1.33"
   prose:
-    fontFamily: "'Recursive Variable', ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "ui-sans-serif, -apple-system, 'Inter', 'Segoe UI', system-ui, sans-serif"
     fontSize: "1rem"
     fontWeight: 400
     lineHeight: "1.75"
@@ -128,7 +128,7 @@ Density is deliberate. Controls are small and close (14px and 12px type, 6–12p
 - Cool graphite neutrals and one signal blue reserved for selection, unread, focus and the main action.
 - Status is always double-coded: color plus icon or text, never color alone.
 - Dense by default, comfortable on touch: controls reach 44px only on coarse pointers.
-- Two type voices: a system sans for the interface, Recursive for the review text itself.
+- One type voice, the system sans, for the interface and the review text alike. Mono is for code.
 - Confirmed rejection: consumer-app playfulness (very round corners, bright color, illustration, cheerful tone).
 
 ## Colors
@@ -144,7 +144,7 @@ Graphite neutrals and one signal blue, with four status hues. Both themes are co
 - **Important Amber** (oklch(55.5% 0.163 48.998) light / oklch(87.9% 0.169 91.605) dark): "important" findings.
 
 ### Tertiary
-- **Semantic Violet** (oklch(49.1% 0.27 292.581) light / oklch(81.1% 0.111 293.571) dark): the semantic-typography toggle and the triage label; the only place the app is allowed to be "expressive".
+- **Semantic Violet** (oklch(49.1% 0.27 292.581) light / oklch(81.1% 0.111 293.571) dark): the triage label; the only place the app is allowed to be "expressive".
 
 ### Neutral
 - **Graphite Canvas** (oklch(14.1% 0.005 285.823) dark / oklch(98.5% 0) light): the page.
@@ -162,10 +162,9 @@ Graphite neutrals and one signal blue, with four status hues. Both themes are co
 ## Typography
 
 **Interface Font:** the system sans stack (`ui-sans-serif, -apple-system, Inter, Segoe UI, system-ui`)
-**Review Font:** Recursive Variable (weight and slant axes only), falling back to the system sans
 **Mono Font:** `ui-monospace, SF Mono, JetBrains Mono, Menlo`, for code, paths and ids
 
-**Character:** a neutral, native-feeling interface that disappears, with a slightly more characterful face reserved for the text people actually read. The semantic-typography layer (semfont) modulates that face by meaning: color for sentiment, weight and size for importance, slant for hedging. It is on by default and can be switched off.
+**Character:** a neutral, native-feeling interface that disappears. The review text is set in the same system sans, with no second face.
 
 ### Hierarchy
 - **Display** (600, 1.875rem, tight −0.025em): the Home page title only.
@@ -173,15 +172,15 @@ Graphite neutrals and one signal blue, with four status hues. Both themes are co
 - **Title** (500, 1rem): section headings inside a review (real `h2`s wrapping the collapsible triggers) and dialog titles.
 - **Body** (400, 0.875rem, 1.43): the interface: buttons, list rows, card text.
 - **Label** (400, 0.75rem): metadata, counts, timestamps, keyboard hints.
-- **Prose** (400, 1rem, 1.75, Recursive, measure capped at 80ch): the review text.
+- **Prose** (400, 1rem, 1.75, measure capped at 80ch): the review text.
 
 ### Named Rules
-**The Two Voices Rule.** The interface speaks in the system sans; only review prose may use Recursive. Mono is for code, paths and ids, never a costume.
+**The One Voice Rule.** Everything speaks in the system sans. Mono is for code, paths and ids, never a costume.
 **The Long-Word Rule.** Review text contains unbroken paths and identifiers; prose sets `overflow-wrap: anywhere`, and nothing in a card may push past its border.
 
 ## Layout
 
-A sticky chrome of two rows (a 3.5rem top bar and a 2.5rem strip of open reviews, 3rem on touch) sits over a flexible body. The body is a card grid on Home (1–5 columns depending on card size and width; small, medium, large) and a reader on a review: article capped at 80ch, with an optional 16rem side panel for details and contents. A left sidebar (18rem) lists every review but only exists while a review is open; Home is itself the list. Spacing rhythm is Tailwind's 4px base: 8px inside compact controls, 12px between related items, 16px card padding, 24px page gutters.
+A sticky chrome of two rows (a 3.5rem top bar and a 2.5rem strip of open reviews, 3rem on touch) sits over a flexible body. The body is a grouped list on Home (what waits on you first, what is done folded) and a reader on a review: article capped at 80ch. A left sidebar (18rem) lists every review but only exists while a review is open; Home is itself the list. Spacing rhythm is Tailwind's 4px base: 8px inside compact controls, 12px between related items, 16px card padding, 24px page gutters.
 
 The chrome height is a token (`--chrome-h`, `--strip-h`) that grows on coarse pointers, and everything pinned beneath it reads the variable. Open reviews behave like browser tabs: they start at 14rem wide, shrink together as more open, drop to an icon below ~96px, and animate in and out.
 
@@ -190,7 +189,7 @@ The chrome height is a token (`--chrome-h`, `--strip-h`) that grows on coarse po
 Flat by default. Depth is tonal: canvas, then surface, separated by a one-pixel hairline. Shadows are a response, not a resting state: a card gains `shadow-sm` on hover, and only modal surfaces (command palette, post confirmation) carry a large soft shadow.
 
 ### Shadow Vocabulary
-- **Hover lift** (`box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)`): a review card under the pointer.
+- **Hover lift** (`box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)`): a surface under the pointer.
 - **Modal** (`box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25)`): dialogs over a 40–50% black scrim.
 
 ### Named Rules

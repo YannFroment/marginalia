@@ -1,0 +1,2 @@
+{ "source": "markdown", "verdict": "REQUEST_CHANGES", "counts": { "critical": 1, "important": 1, "suggestion": 1, "info": 0 }, "postable": 1,
+  "locations": [{ "title": "Total recalculé deux fois", "path": "src/panier/total.ts", "line": 10 }] }

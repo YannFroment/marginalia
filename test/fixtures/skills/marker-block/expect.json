@@ -1,0 +1,2 @@
+{ "source": "markdown", "verdict": "APPROVE", "counts": { "critical": 0, "important": 0, "suggestion": 1, "info": 0 }, "postable": 0,
+  "locations": [{ "title": "Consider a shorter name for src/a/long-name.ts:3.", "path": "src/a/long-name.ts", "line": 3 }] }

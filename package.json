@@ -7,18 +7,25 @@
   "main": "poll.mjs",
   "scripts": {
     "start": "node poll.mjs",
+    "dev": "concurrently -k -n api,studio -c blue,magenta \"npm start\" \"npm run studio:dev\"",
     "setup": "npm install && npm run studio:install && npm run studio:build && npm run init",
     "init": "node scripts/init.mjs",
     "doctor": "node scripts/doctor.mjs",
+    "autostart": "node scripts/autostart.mjs",
     "test": "node --test test/*.test.mjs",
+    "check:size": "node scripts/check-file-size.mjs",
     "studio:install": "npm --prefix studio install",
     "studio:build": "npm --prefix studio run build",
-    "studio:dev": "npm --prefix studio run dev"
+    "studio:dev": "npm --prefix studio run dev",
+    "studio:storybook": "npm --prefix studio run storybook"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.4"
   }
 }

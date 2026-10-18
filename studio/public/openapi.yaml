@@ -1,0 +1,705 @@
+openapi: 3.1.0
+info:
+  title: Marginalia studio API
+  version: 1.0.0
+  description: |
+    The contract between the studio server (`studio/server.mjs`) and the React app.
+
+    **Local only.** The server binds to `127.0.0.1` (default port `4477`) and is a thin layer
+    over the review files, `status.json`, and the GitLab API called with the owner's `GITLAB_TOKEN`.
+
+    **Write endpoints** (`PUT`, `POST`, `DELETE`) only accept requests whose `Host` is the
+    studio itself and whose `Origin`, when present, is too (DNS-rebinding and cross-site
+    protection). Requests with a body must be `application/json`.
+
+    **Posting is opt-in.** Everything that touches GitLab drafts or posting answers `403`
+    unless the server runs with `ALLOW_POSTING=true`. The merge request is always resolved
+    server-side from `status.json` using the review `slug`; it is never taken from a request.
+
+    **Pending review flow.** `POST /api/post` adds a comment to the token owner's *pending
+    review* (a GitLab draft note, invisible to others). `POST /api/submit-review` publishes all
+    drafts of that merge request as one real review.
+servers:
+  - url: http://localhost:4477
+    description: Studio server (`npm start`). In dev the Vite proxy forwards `/api` and `/events` here.
+tags:
+  - name: Reviews
+    description: Read the reviews written by the bot and the state of its run.
+  - name: Settings
+  - name: Pending review
+    description: Draft notes on GitLab, published together as one review. Requires `ALLOW_POSTING=true`.
+  - name: Triage fixes
+    description: The fixes a triage committed locally, and pushing them to the merge request's branch.
+  - name: Live
+paths:
+  /api/reviews:
+    get:
+      tags: [Reviews]
+      operationId: listReviews
+      summary: List reviews and the bot state
+      description: Everything the home screen needs in one call. Also drops records of drafts or notes that were deleted on GitLab (throttled to once per 15 s).
+      responses:
+        '200':
+          description: The review list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewsPayload' }
+  /api/reviews/{slug}:
+    get:
+      tags: [Reviews]
+      operationId: getReview
+      summary: Read one review as Markdown
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      responses:
+        '200':
+          description: The review file.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [slug, kind, markdown, shape]
+                properties:
+                  slug: { type: string }
+                  kind: { $ref: '#/components/schemas/ReviewKind' }
+                  markdown: { type: string }
+                  shape: { $ref: '#/components/schemas/ReviewShape' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/history/{slug}:
+    get:
+      tags: [Reviews]
+      operationId: listReviewVersions
+      summary: Earlier versions of a review
+      description: A re-run replaces the review file; the one it replaced is kept under `.history`. Newest first.
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      responses:
+        '200':
+          description: The kept versions (empty when the review was never re-run).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [versions]
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, at]
+                      properties:
+                        id: { type: string }
+                        at: { type: string, format: date-time, description: When that version was written. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /api/history/{slug}/{id}:
+    get:
+      tags: [Reviews]
+      operationId: getReviewVersion
+      summary: Read one earlier version of a review
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - { name: id, in: path, required: true, schema: { type: string, pattern: '^[\w-]+$' } }
+      responses:
+        '200':
+          description: The version, with the shape the bot read from it.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [slug, id, markdown, shape]
+                properties:
+                  slug: { type: string }
+                  id: { type: string }
+                  markdown: { type: string }
+                  shape: { $ref: '#/components/schemas/ReviewShape' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/discussions/{slug}:
+    get:
+      tags: [Pending review]
+      operationId: listDiscussions
+      summary: The GitLab conversation of the review's merge request
+      description: Human notes only (system notes are dropped), oldest thread first. The merge request comes from `status.json`.
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      responses:
+        '200':
+          description: The threads.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [discussions]
+                properties:
+                  discussions: { type: array, items: { $ref: '#/components/schemas/Discussion' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502': { $ref: '#/components/responses/GitLabError' }
+  /api/reply:
+    post:
+      tags: [Pending review]
+      operationId: replyToDiscussion
+      summary: Reply to a GitLab thread, as part of the pending review
+      description: The reply is a draft note (`in_reply_to_discussion_id`); it goes out with `/api/submit-review`. Needs `ALLOW_POSTING=true`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug, discussionId, body]
+              properties:
+                slug: { type: string }
+                discussionId: { type: string, pattern: '^[0-9a-f]{8,64}$' }
+                body: { type: string, minLength: 1, maxLength: 10000 }
+      responses:
+        '200':
+          description: Added to the pending review.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, draftId]
+                properties:
+                  ok: { type: boolean }
+                  draftId: { type: integer }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '502': { $ref: '#/components/responses/GitLabError' }
+  /api/settings:
+    put:
+      tags: [Settings]
+      operationId: updateSettings
+      summary: Change settings
+      description: Saved to `settings.json`; the bot picks it up without a restart. Send only the keys to change; a key set to `null` goes back to its `.env` default.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pollIntervalMinutes: { type: [integer, 'null'], minimum: 1, maximum: 1440 }
+                staleAfterDays: { type: [integer, 'null'], minimum: 1, maximum: 365 }
+                allowedTargetBranches: { type: [array, 'null'], items: { type: string } }
+                excludeAuthors: { type: [array, 'null'], items: { type: string } }
+      responses:
+        '200':
+          description: The settings now in force, and the `.env` defaults.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [settings, defaults]
+                properties:
+                  settings: { $ref: '#/components/schemas/Settings' }
+                  defaults: { $ref: '#/components/schemas/Settings' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+  /api/post:
+    post:
+      tags: [Pending review]
+      operationId: addToReview
+      summary: Add a comment to the pending review
+      description: |
+        Creates a GitLab draft note, inline on `path:line` when given. If GitLab refuses the
+        anchor (typically a line outside the diff), the comment is added as a general note
+        prefixed with `` `path:line` `` and the response has `inline: false`.
+        A given `slug` + `commentId` can only be added once (`409`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddToReviewRequest' }
+      responses:
+        '200':
+          description: The comment is in the pending review.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PostedInfo' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Already added.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, posted]
+                properties:
+                  error: { type: string, example: already posted }
+                  posted: { $ref: '#/components/schemas/PostedInfo' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '502': { $ref: '#/components/responses/GitLabError' }
+  /api/submit-review:
+    post:
+      tags: [Pending review]
+      operationId: submitReview
+      summary: Submit the pending review
+      description: |
+        Publishes every pending draft of the merge request as one review
+        (`draft_notes/bulk_publish`), after adding the optional `summary` as a general note,
+        then applies the chosen `action`: `comment` (default) publishes only, `request_changes`
+        publishes with the `requested_changes` reviewer state, `approve` publishes then approves
+        the merge request at the SHA that was reviewed (GitLab refuses with 409 if it moved; the
+        comments are then already published). `approve` and `request_changes` need no comment.
+        **This publishes all drafts of the token's owner on that merge request, including
+        ones started in GitLab's own UI.**
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug]
+              properties:
+                slug: { type: string }
+                summary: { type: string, maxLength: 10000 }
+                action: { type: string, enum: [comment, approve, request_changes], default: comment }
+      responses:
+        '200':
+          description: Published.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [submitted, summary]
+                properties:
+                  submitted: { type: integer, description: Drafts this studio had recorded for the review. }
+                  summary: { type: boolean, description: Whether a summary note was added. }
+                  action: { type: string, enum: [comment, approve, request_changes] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '502': { $ref: '#/components/responses/GitLabError' }
+  /api/drafts/{slug}:
+    get:
+      tags: [Pending review]
+      operationId: listDrafts
+      summary: List the pending drafts
+      description: Read from GitLab, so it includes drafts started in GitLab's own UI.
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      responses:
+        '200':
+          description: The pending drafts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [drafts]
+                properties:
+                  drafts:
+                    type: array
+                    items: { $ref: '#/components/schemas/DraftNote' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502': { $ref: '#/components/responses/GitLabError' }
+  /api/drafts/{slug}/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+      - name: id
+        in: path
+        required: true
+        description: GitLab draft note id, from `GET /api/drafts/{slug}`.
+        schema: { type: integer }
+    put:
+      tags: [Pending review]
+      operationId: updateDraft
+      summary: Edit a draft
+      description: Changes the text only; the position is kept. To move a comment, delete it and add it again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, minLength: 1, maxLength: 10000 }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '502': { $ref: '#/components/responses/GitLabError' }
+    delete:
+      tags: [Pending review]
+      operationId: deleteDraft
+      summary: Delete a draft
+      description: If the studio recorded it, the comment can be added again from its card.
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502': { $ref: '#/components/responses/GitLabError' }
+  /api/fixes/{slug}:
+    get:
+      tags: [Triage fixes]
+      operationId: getFixes
+      summary: Where a triage's local fixes stand against the MR branch
+      description: |
+        Compares `marginalia/<branch-slug>` with the merge request's branch on origin (`git ls-remote`).
+        `ready`: the fixes sit on top of the current head and a push fast-forwards it. `pushed`: the
+        branch already contains them. `outdated`: the branch moved since the triage. `none`: no fix.
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      responses:
+        '200':
+          description: The fixes and the branch.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FixesStatus' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502': { description: git failed (origin unreachable, ...). }
+  /api/push:
+    post:
+      tags: [Triage fixes]
+      operationId: pushFixes
+      summary: Push a triage's fixes to the MR branch
+      description: |
+        Only with `ALLOW_PUSH=true`. Fast-forward only (never `--force`): `409` when the branch moved
+        since the triage or there is nothing to push, with the current status.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug]
+              properties:
+                slug: { type: string }
+      responses:
+        '200':
+          description: Pushed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FixesStatus' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Not pushable (outdated, already pushed, no fix).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, status]
+                properties:
+                  error: { type: string }
+                  status: { $ref: '#/components/schemas/FixesStatus' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '502': { description: git push failed. }
+  /events:
+    get:
+      tags: [Live]
+      operationId: subscribeEvents
+      summary: Change notifications (Server-Sent Events)
+      description: >-
+        The server sends `data: changed` whenever the reviews directory, `status.json` or `settings.json` change (debounced 150 ms). The client then reloads `GET /api/reviews`. Reconnect delay is 3 s.
+      responses:
+        '200':
+          description: An open event stream.
+          content:
+            text/event-stream:
+              schema: { type: string, example: 'data: changed' }
+components:
+  parameters:
+    Slug:
+      name: slug
+      in: path
+      required: true
+      description: Review file name without `.md`. Letters, digits, `_`, `.` and `-` only.
+      schema: { type: string, pattern: '^[\w.-]+$' }
+  responses:
+    Ok:
+      description: Done.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [ok]
+            properties:
+              ok: { type: boolean, const: true }
+    BadRequest:
+      description: Invalid input.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Posting is disabled (`ALLOW_POSTING` is not `true`), or the `Host`/`Origin` is not the studio's own.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Unknown review, no tracked merge request for it, or the draft no longer exists.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    UnsupportedMediaType:
+      description: The body is not `application/json`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    GitLabError:
+      description: GitLab refused or failed the call. The message is truncated to 300 characters.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+    Verdict:
+      type: [string, 'null']
+      enum: [APPROVE, REQUEST_CHANGES, OTHER, null]
+    ReviewKind:
+      type: string
+      enum: [review, comments, retro]
+      description: '`comments` is a triage of reviewer comments on an MR you authored.'
+    Settings:
+      type: object
+      required: [pollIntervalMinutes, staleAfterDays, allowedTargetBranches, excludeAuthors]
+      properties:
+        pollIntervalMinutes: { type: integer, minimum: 1, maximum: 1440 }
+        staleAfterDays: { type: integer, minimum: 1, maximum: 365, description: MRs with no activity for this long are skipped. }
+        allowedTargetBranches: { type: array, items: { type: string }, description: Only these target branches are reviewed; empty means all. }
+        excludeAuthors: { type: array, items: { type: string }, description: GitLab usernames whose MRs are never touched. }
+    Highlight:
+      type: object
+      required: [severity, text]
+      properties:
+        severity: { type: string, enum: [critical, important] }
+        text: { type: string }
+    CrossFinding:
+      type: object
+      required: [kind, iid, text]
+      properties:
+        kind: { type: string, enum: [settled-later, belongs-lower, assumes-upper] }
+        iid: { type: integer, description: The layer concerned. }
+        text: { type: string }
+    JiraRef:
+      type: [object, 'null']
+      required: [key, priority, rank]
+      properties:
+        key: { type: string, example: PAY-212 }
+        priority: { type: [string, 'null'] }
+        rank: { type: [integer, 'null'] }
+    ShapeSource:
+      type: string
+      enum: [json, markdown, none]
+      description: |
+        Where the findings came from. `json`: the command wrote `.marginalia-findings.json`.
+        `markdown`: read from the report's Critical / Important / Suggestion sections.
+        `none`: nothing could be read, and `warnings` says so.
+    Finding:
+      type: object
+      required: [id, severity, title, path, line, body, comment]
+      properties:
+        id: { type: string, pattern: '^[\w-]{1,64}$', description: Stable across re-runs (from the file and the point, not the wording). Also the `commentId` when posted. }
+        severity: { type: string, enum: [critical, important, suggestion, info] }
+        title: { type: string }
+        path: { type: [string, 'null'], description: Repo-relative file the finding is about. }
+        line: { type: [integer, 'null'], minimum: 1, description: Only set together with `path`. }
+        body: { type: string }
+        comment: { type: [string, 'null'], description: The comment to post on the merge request, ready as is. }
+    ReviewShape:
+      type: object
+      description: What the studio relies on, the same whatever skill or command wrote the review (`lib/findings.mjs`).
+      required: [version, source, verdict, summary, findings, warnings]
+      properties:
+        version: { type: integer, const: 1 }
+        source: { $ref: '#/components/schemas/ShapeSource' }
+        verdict: { $ref: '#/components/schemas/Verdict' }
+        summary: { type: [string, 'null'], maxLength: 400 }
+        findings: { type: array, items: { $ref: '#/components/schemas/Finding' } }
+        warnings: { type: array, items: { type: string } }
+        generatedAt: { type: string, format: date-time }
+    DiscussionNote:
+      type: object
+      required: [id, author, authorName, mine, body, at, path, line]
+      properties:
+        id: { type: integer }
+        author: { type: [string, 'null'] }
+        authorName: { type: [string, 'null'] }
+        mine: { type: boolean, description: Written by the token's owner. }
+        body: { type: string }
+        at: { type: string, format: date-time }
+        path: { type: [string, 'null'] }
+        line: { type: [integer, 'null'] }
+    Discussion:
+      type: object
+      required: [id, resolved, resolvable, path, line, notes]
+      properties:
+        id: { type: string }
+        resolved: { type: boolean }
+        resolvable: { type: boolean }
+        path: { type: [string, 'null'] }
+        line: { type: [integer, 'null'] }
+        notes: { type: array, items: { $ref: '#/components/schemas/DiscussionNote' } }
+    ReviewItem:
+      type: object
+      required: [slug, kind, title, iid, author, webUrl, branch, verdict, critical, important, summary, highlights, postable, contract, stackId, crossLayer, stale, mtime, reviewedAt, tracked, jira]
+      properties:
+        slug: { type: string }
+        kind: { $ref: '#/components/schemas/ReviewKind' }
+        title: { type: string }
+        iid: { type: [string, integer, 'null'], description: Merge request number. }
+        author: { type: [string, 'null'] }
+        webUrl: { type: [string, 'null'], format: uri }
+        branch: { type: [string, 'null'] }
+        verdict: { $ref: '#/components/schemas/Verdict' }
+        critical: { type: integer, minimum: 0 }
+        important: { type: integer, minimum: 0 }
+        summary: { type: [string, 'null'] }
+        highlights: { type: array, items: { $ref: '#/components/schemas/Highlight' } }
+        postable: { type: integer, minimum: 0, description: Findings that come with a comment ready to post. }
+        contract:
+          type: object
+          required: [source, warnings]
+          description: How the bot read this review, and what the studio should tell the person about it.
+          properties:
+            source: { $ref: '#/components/schemas/ShapeSource' }
+            warnings: { type: array, items: { type: string } }
+        stackId: { type: [string, 'null'] }
+        crossLayer: { type: array, items: { $ref: '#/components/schemas/CrossFinding' } }
+        stale: { type: boolean, description: Reviewed before, but the commit (or the layer below) moved since. }
+        mtime: { type: string, format: date-time }
+        reviewedAt: { type: string, format: date-time }
+        tracked: { type: boolean, description: A merge request in `status.json` points at this review. Posting needs it. }
+        jira: { $ref: '#/components/schemas/JiraRef' }
+    StackLayer:
+      type: object
+      required: [iid, title, webUrl, slug, status, parentIid, position]
+      properties:
+        iid: { type: integer }
+        title: { type: string }
+        webUrl: { type: [string, 'null'] }
+        slug: { type: [string, 'null'], description: Review file, which may not exist yet. }
+        status: { type: string }
+        parentIid: { type: [integer, 'null'] }
+        position: { type: integer }
+    Stack:
+      type: object
+      required: [id, baseBranch, layers]
+      properties:
+        id: { type: string }
+        baseBranch: { type: string }
+        layers: { type: array, items: { $ref: '#/components/schemas/StackLayer' } }
+    BotStatus:
+      type: object
+      description: Content of `status.json`, written by the poller.
+      required: [pid, phase, current, lastPoll, nextPollAt]
+      properties:
+        pid: { type: integer }
+        phase: { type: string, enum: [idle, polling, reviewing, error, stopped] }
+        current:
+          type: [object, 'null']
+          required: [iid, title, startedAt]
+          properties:
+            iid: { type: integer }
+            title: { type: string }
+            startedAt: { type: string, format: date-time }
+            progress: { type: array, items: { type: string } }
+        lastPoll:
+          type: [object, 'null']
+          required: [at, ok, error]
+          properties:
+            at: { type: string, format: date-time }
+            ok: { type: boolean }
+            error: { type: [string, 'null'] }
+        nextPollAt: { type: [string, 'null'], format: date-time }
+        mrs:
+          type: array
+          items:
+            type: object
+            required: [iid, status]
+            properties:
+              iid: { type: integer }
+              status: { type: string, description: 'e.g. `pending`, `reviewing`, `failed`, `skipped`, `up_to_date`.' }
+              reviewPath: { type: [string, 'null'] }
+              title: { type: string }
+              author: { type: string }
+              web_url: { type: string, format: uri }
+              reviewedAt: { type: string, format: date-time }
+    PostedInfo:
+      type: object
+      description: A comment this studio added to a review, kept in `posted.json`.
+      required: [at, iid, url]
+      properties:
+        at: { type: string, format: date-time }
+        iid: { type: integer }
+        url: { type: string, format: uri, description: The note once published; the merge request until then. }
+        state:
+          type: string
+          enum: [draft, published]
+          description: '`draft`: in the pending review. Absent on older records, which are published.'
+        inline:
+          type: boolean
+          description: '`false` when GitLab refused the line anchor and the comment went up as a general note. Absent when no target was given.'
+    ReviewsPayload:
+      type: object
+      required: [status, items, stacks, projectUrl, settings, settingsDefaults, allowPosting, allowPush, posted]
+      properties:
+        status:
+          oneOf:
+            - { $ref: '#/components/schemas/BotStatus' }
+            - { type: 'null' }
+        items: { type: array, items: { $ref: '#/components/schemas/ReviewItem' } }
+        stacks: { type: array, items: { $ref: '#/components/schemas/Stack' } }
+        projectUrl: { type: [string, 'null'], format: uri }
+        settings: { $ref: '#/components/schemas/Settings' }
+        settingsDefaults: { $ref: '#/components/schemas/Settings' }
+        allowPosting: { type: boolean }
+        allowPush: { type: boolean }
+        posted:
+          type: object
+          description: Keyed by `<review slug>:<commentId>`.
+          additionalProperties: { $ref: '#/components/schemas/PostedInfo' }
+    FixesStatus:
+      type: object
+      required: [ref, branch, state, fixesSha, remoteSha, commits]
+      properties:
+        ref: { type: string, example: marginalia/feat-col-838 }
+        branch: { type: string }
+        state: { type: string, enum: [none, ready, pushed, outdated] }
+        fixesSha: { type: [string, 'null'] }
+        remoteSha: { type: [string, 'null'] }
+        commits:
+          type: array
+          description: The commits a push adds, newest first (only when `ready`).
+          items:
+            type: object
+            required: [sha, subject]
+            properties:
+              sha: { type: string }
+              subject: { type: string }
+    AddToReviewRequest:
+      type: object
+      required: [slug, commentId, body]
+      properties:
+        slug: { type: string }
+        commentId: { type: string, pattern: '^[\w-]{1,64}$', description: Stable id of the "Comment to post" block within the review. }
+        body: { type: string, minLength: 1, maxLength: 10000 }
+        path: { type: string, maxLength: 500, description: File of the diff. Give it with `line` for an inline comment, alone for a whole-file comment. }
+        line: { type: integer, minimum: 1, description: Line of the new version of the file. Requires `path`. }
+    DraftNote:
+      type: object
+      required: [id, body, path, line]
+      properties:
+        id: { type: integer }
+        body: { type: string }
+        path: { type: [string, 'null'], description: Null for a general comment. }
+        line: { type: [integer, 'null'] }

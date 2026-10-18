@@ -1,0 +1,5 @@
+{ "source": "json", "verdict": "REQUEST_CHANGES", "counts": { "critical": 1, "important": 1, "suggestion": 0, "info": 0 }, "postable": 2,
+  "locations": [
+    { "title": "Total can go negative", "path": "src/lib/pricing.ts", "line": 42 },
+    { "title": "Client prices are trusted", "path": "src/app/api/checkout/route.ts", "line": 12 }
+  ] }

@@ -1,8 +1,10 @@
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, useReducedMotion } from 'motion/react';
+import * as m from 'motion/react-m';
 import { Check, LayoutGrid, PanelLeft, X } from 'lucide-react';
 import type { ReviewItem } from '../lib/api';
 import { cn } from '../lib/utils';
-import { TabIcon, VERDICT_ICON, type BotState } from './TabIcon';
+import { TabIcon, type BotState } from './TabIcon';
+import { VERDICT_ICON } from '../lib/verdictIcons';
 
 export type { BotState };
 
@@ -59,7 +61,7 @@ export function TabStrip({ tabs, activeSlug, botBySlug, isUnread, isPosted, home
           const unread = isUnread(item);
           const accent = VERDICT_ICON[item.verdict ?? 'OTHER'].accent;
           return (
-            <motion.li
+            <m.li
               key={item.slug}
               // A new tab grows in and a closed one shrinks away while its
               // siblings give up/take back the space, like a browser.
@@ -93,7 +95,6 @@ export function TabStrip({ tabs, activeSlug, botBySlug, isUnread, isPosted, home
                   {unread && !active && <span className="absolute -right-1 -top-1 size-2 rounded-full bg-blue-500 ring-2 ring-zinc-100 @min-[96px]:hidden dark:ring-zinc-900" aria-hidden />}
                 </span>
                 <span className="hidden min-w-0 truncate @min-[96px]:block">
-                  {item.iid && <span className="mr-1.5 hidden font-mono text-xs text-fg-muted @min-[150px]:inline">!{item.iid}</span>}
                   {item.title}
                 </span>
               </a>
@@ -109,7 +110,7 @@ export function TabStrip({ tabs, activeSlug, botBySlug, isUnread, isPosted, home
                   <X className="size-3.5" />
                 </button>
               </span>
-            </motion.li>
+            </m.li>
           );
         })}
         </AnimatePresence>

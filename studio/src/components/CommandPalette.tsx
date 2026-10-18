@@ -24,14 +24,14 @@ export function CommandPalette({ open, setOpen, items, onSelect }: { open: boole
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 pt-[15vh]" onClick={() => setOpen(false)}>
+    <div role="presentation" className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 pt-[15vh]" onClick={() => setOpen(false)}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Search reviews" className="w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
       <Command
         label="Search reviews"
-        className="w-full overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900"
+        className="w-full overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl transition-shadow focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/50 dark:border-zinc-800 dark:bg-zinc-900 dark:focus-within:border-blue-500"
         onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}
       >
-        <Command.Input placeholder="MR, title, branch, author…" className="w-full border-b border-zinc-200 bg-transparent px-4 py-3 text-sm outline-none focus-visible:bg-zinc-50 focus-visible:shadow-[inset_0_0_0_2px_var(--color-blue-500)] dark:border-zinc-800 dark:focus-visible:bg-zinc-800/50" />
+        <Command.Input placeholder="MR, title, branch, author…" className="w-full border-b border-zinc-200 bg-transparent px-4 py-3 text-sm outline-none dark:border-zinc-800" />
         <Command.List className="max-h-80 overflow-y-auto p-2">
           <Command.Empty className="px-3 py-6 text-center text-sm text-fg-muted">No results</Command.Empty>
           {items.map((it) => (

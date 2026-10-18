@@ -1,0 +1,7 @@
+{ "source": "json", "verdict": "REQUEST_CHANGES", "counts": { "critical": 1, "important": 1, "suggestion": 1, "info": 3 }, "postable": 1,
+  "locations": [
+    { "title": "Retry never stops", "path": "src/net/retry.ts", "line": 31 },
+    { "title": "Missing timeout", "path": "src/net/client.ts", "line": null },
+    { "title": "Typo", "path": "src/net/retry.ts", "line": 5 }
+  ],
+  "warnings": ["unknown severity", "not an object", "no title or body"] }
