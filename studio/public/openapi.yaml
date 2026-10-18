@@ -44,6 +44,112 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ReviewsPayload' }
+  /api/tickets:
+    get:
+      tags: [Tickets]
+      operationId: listTickets
+      summary: List the open Jira tickets of the Tickets tab
+      description: What the poller last wrote to tickets.json (null before its first fetch), whether the tab and the move to done are on, and the latest moves to done (or why one could not be made).
+      responses:
+        '200':
+          description: The tickets.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [enabled, autoDone, data, done, suggestions]
+                properties:
+                  enabled: { type: boolean }
+                  autoDone: { type: boolean }
+                  data: { type: object, nullable: true }
+                  done: { type: array, items: { type: object } }
+                  suggestions:
+                    type: object
+                    description: The suggested tickets; only `enabled` (false) when SUGGEST_JIRA_PROJECT is empty. Dismissed ones are left out.
+                    required: [enabled]
+                    properties:
+                      enabled: { type: boolean }
+                      canPost: { type: boolean, description: SUGGEST_ALLOW_CREATE is true. }
+                      project: { type: string, description: The Jira project Post creates the ticket in. }
+                      running: { type: boolean }
+                      lastRun: { type: object, nullable: true }
+                      items: { type: array, items: { type: object } }
+  /api/suggestions/run:
+    post:
+      tags: [Tickets]
+      operationId: runSuggestions
+      summary: Start a run of suggested tickets
+      description: Reads the next folder of SUGGEST_AREAS and drafts tickets; answers at once, the list refreshes when the run lands. A click during a run joins it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '202':
+          description: The run is going.
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+  /api/suggestions/post:
+    post:
+      tags: [Tickets]
+      operationId: postSuggestion
+      summary: Create the Jira ticket of a suggestion
+      description: Creates the ticket in SUGGEST_JIRA_PROJECT with the title and markdown body given (or the drafted ones), converted to Atlassian Document Format, then reads it back. Only with SUGGEST_ALLOW_CREATE=true, and once per suggestion (`409`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string, format: uuid }
+                title: { type: string, maxLength: 250 }
+                body: { type: string, maxLength: 18000 }
+      responses:
+        '200':
+          description: The ticket exists in Jira.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, key, url]
+                properties:
+                  status: { type: string, example: posted }
+                  key: { type: string, example: ABC-123 }
+                  url: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Already posted, or being posted.
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '502':
+          description: Jira refused the request.
+  /api/suggestions/dismiss:
+    post:
+      tags: [Tickets]
+      operationId: dismissSuggestion
+      summary: Dismiss a suggestion
+      description: Hides a suggestion that was not posted; a posted one stays as it is.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Dismissed.
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
   /api/reviews/{slug}:
     get:
       tags: [Reviews]
