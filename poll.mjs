@@ -13,6 +13,8 @@ import { listOpenMergeRequests, reviewFileCoversLastPush, latestPeerCommentAt, g
 import { fetchReviewStates } from './lib/mr-state.mjs';
 import { jiraPriorityOf } from './lib/jira.mjs';
 import { ticketsEnabled, refreshTickets } from './lib/tickets.mjs';
+import { suggestEnabled, SUGGEST_EVERY_HOURS } from './lib/suggest-config.mjs';
+import { readSuggestions, findSuggestions } from './lib/suggest.mjs';
 import { autoDone } from './lib/jira-done.mjs';
 import { reviewOutputPath, mrCommentsOutputPath, mtimeOrNull } from './lib/paths.mjs';
 import { ensureBotWorktree } from './lib/worktree.mjs';
@@ -393,6 +395,23 @@ async function runTickets() {
   }
 }
 
+// Suggested tickets on a schedule, when SUGGEST_EVERY_HOURS is set; checked
+// hourly so a restart does not wait a full period.
+async function runSuggestions() {
+  const every = Number(SUGGEST_EVERY_HOURS) * 3_600_000;
+  try {
+    const { lastRun } = await readSuggestions();
+    if (!lastRun || Date.now() - Date.parse(lastRun.at) >= every) {
+      const found = await findSuggestions();
+      if (found.length) notify('Tickets', `${found.length} suggested ticket(s) to read`);
+    }
+  } catch (err) {
+    console.error(`${timestamp()} Suggestion run failed:`, err.message);
+  } finally {
+    setTimeout(runSuggestions, 3_600_000);
+  }
+}
+
 async function shutdown() {
   clearTimeout(pollTimer);
   status.phase = 'stopped';
@@ -415,6 +434,7 @@ async function main() {
   // `kill -USR1 <pid>` (the menu bar's "Poll now") triggers a poll right away.
   process.on('SIGUSR1', runPoll);
   if (ticketsEnabled) runTickets();
+  if (suggestEnabled && Number(SUGGEST_EVERY_HOURS) > 0) runSuggestions();
   await runPoll();
 }
 
