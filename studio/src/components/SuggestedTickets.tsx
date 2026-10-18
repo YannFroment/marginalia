@@ -61,18 +61,18 @@ function SuggestionCard({ s, canPost, project }: { s: Suggestion; canPost: boole
 
   return (
     <li className="bg-white dark:bg-zinc-900">
-      <button aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(!open)} className="flex w-full items-start gap-3 px-4 py-3 text-left text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800/60">
+      <button aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(!open)} className="flex w-full flex-wrap items-start gap-x-3 gap-y-1 px-4 py-3 text-left text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800/60">
         <ChevronDown className={cn('mt-0.5 size-4 shrink-0 text-fg-muted transition-transform motion-reduce:transition-none', open ? '' : '-rotate-90')} aria-hidden />
-        <span className="min-w-0 flex-1">
+        <span className="min-w-0 flex-1 basis-56">
           <span className="font-medium">{s.title}</span>
           <span className="mt-0.5 block text-xs text-fg-muted">{s.why}</span>
         </span>
-        {s.principle && <span className="shrink-0 rounded bg-violet-500/10 px-1.5 py-0.5 text-xs text-violet-700 dark:text-violet-300">{s.principle}</span>}
+        {s.principle && <span className="max-w-full rounded bg-violet-500/10 px-1.5 py-0.5 text-xs text-violet-700 dark:text-violet-300">{s.principle}</span>}
         {posted && <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-0.5 font-mono text-xs text-emerald-700 dark:text-emerald-300">{s.key}</span>}
       </button>
       {open && (
         <div id={panelId} className="border-t border-zinc-100 px-4 pb-4 pt-3 dark:border-zinc-800">
-          {s.files.length > 0 && <p className="mb-3 font-mono text-xs text-fg-muted">{s.files.join(' · ')}</p>}
+          {s.files.length > 0 && <p className="mb-3 font-mono text-xs text-fg-muted [overflow-wrap:anywhere]">{s.files.join(' · ')}</p>}
           {editing ? (
             <div className="space-y-2">
               <label className="block text-xs font-medium text-fg-muted">Title
