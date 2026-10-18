@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { submitReview, type BotStatus, type PostedInfo, type ReviewContent, type ReviewItem } from '../lib/api';
+import { openInIde, submitReview, type BotStatus, type PostedInfo, type ReviewContent, type ReviewItem } from '../lib/api';
 import { LinkContext } from '../lib/links';
 import { cn } from '../lib/utils';
 import { useRerun } from '../lib/useRerun';
@@ -19,12 +19,25 @@ import { ReaderNotices } from './ReaderNotices';
 import { ReviewOverview } from './ReviewOverview';
 import { ReviewTour } from './ReviewTour';
 import { ReviewerTools } from './ReviewerTools';
+import { ReviewChat } from './ReviewChat';
+import { ToolsContext } from '../lib/toolsContext';
+import type { CommentRef } from '../lib/comments';
 import type { BotState } from './TabIcon';
 import { TourSkeleton } from './ReviewSkeleton';
 import { Button } from './ui/Button';
 
-export function ReviewReader({ item, review: currentReview, reviewError, onRetry, projectUrl, allowPosting, allowPush, live, posted, reload, diffInIdeEnabled = false, deepenEnabled = false, qaEnabled = false, botState }: { item: ReviewItem | undefined; review: ReviewContent | null; reviewError: string | null; onRetry: () => void; projectUrl: string | null; allowPosting: boolean; allowPush: boolean; live: BotStatus['current']; posted: Record<string, PostedInfo>; reload: () => void; diffInIdeEnabled?: boolean; deepenEnabled?: boolean; qaEnabled?: boolean; botState?: BotState }) {
+export function ReviewReader({ item, review: currentReview, reviewError, onRetry, projectUrl, allowPosting, allowPush, live, posted, reload, diffInIdeEnabled = false, ideEnabled = false, deepenEnabled = false, qaEnabled = false, botState }: { item: ReviewItem | undefined; review: ReviewContent | null; reviewError: string | null; onRetry: () => void; projectUrl: string | null; allowPosting: boolean; allowPush: boolean; live: BotStatus['current']; posted: Record<string, PostedInfo>; reload: () => void; diffInIdeEnabled?: boolean; ideEnabled?: boolean; deepenEnabled?: boolean; qaEnabled?: boolean; botState?: BotState }) {
   const [submitting, setSubmitting] = useState(false);
+  const [about, setAbout] = useState<CommentRef | null>(null);
+  const slugForTools = item?.slug ?? null;
+  const openFile = useCallback((path: string, line: number) => {
+    if (!slugForTools) return;
+    openInIde(slugForTools, path, line).catch((e: Error) => toast.error('Could not open the IDE', { description: e.message }));
+  }, [slugForTools]);
+  const toolsCtx = useMemo(() => ({
+    askAbout: item?.resumeCommand ? setAbout : null,
+    openInIde: ideEnabled && item?.tracked ? openFile : null,
+  }), [item?.resumeCommand, item?.tracked, ideEnabled, openFile]);
   const { versions, versionId, setVersionId, oldReview } = useReviewVersions(item?.slug, item?.reviewedAt);
   const viewingOld = versionId !== null;
   const content = viewingOld ? oldReview : currentReview;
@@ -43,7 +56,7 @@ export function ReviewReader({ item, review: currentReview, reviewError, onRetry
     const tour = shape?.tour ?? [];
     if (tour.length) return findings.filter((f) => !tour.some((s) => s.findingIds.includes(f.id)));
     const text = squash(markdown ?? '');
-    return findings.filter((f) => !f.comment || !text.includes(squash(f.comment)));
+    return findings.filter((f) => (f.comment ? !text.includes(squash(f.comment)) : !text.includes(squash(f.body).slice(0, 120))));
   }, [markdown, shape]);
   const { intro, sections } = useMemo(() => splitSections(meta.markdown), [meta]);
   const ordered = useMemo(
@@ -58,6 +71,7 @@ export function ReviewReader({ item, review: currentReview, reviewError, onRetry
   return (
     <LinkContext.Provider value={linkCtx}>
     <PostContext.Provider value={postCtx}>
+    <ToolsContext.Provider value={toolsCtx}>
     <div className="px-6 py-6">
       {/* A review with a tour fits the window: header and overview on top, the tour taking the rest
           with each pane scrolling inside it. What comes after is below, on the page. */}
@@ -103,6 +117,11 @@ export function ReviewReader({ item, review: currentReview, reviewError, onRetry
             )}
           </article>
       )}
+      {item?.resumeCommand && (
+        <div className="mx-auto mt-6 w-full max-w-[80ch]">
+          <ReviewChat slug={item.slug} about={about} onClearAbout={() => setAbout(null)} />
+        </div>
+      )}
     </div>
     {submitting && item?.iid && (
       <ConfirmSubmit
@@ -121,6 +140,7 @@ export function ReviewReader({ item, review: currentReview, reviewError, onRetry
         }}
       />
     )}
+    </ToolsContext.Provider>
     </PostContext.Provider>
     </LinkContext.Provider>
   );

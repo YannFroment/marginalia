@@ -1,11 +1,12 @@
 import { Children, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import { Check, Copy, Pencil, Send, Undo2 } from 'lucide-react';
+import { Check, Code2, Copy, MessageSquare, Pencil, Send, Undo2 } from 'lucide-react';
 import { postComment } from '../lib/api';
 import { textOf } from '../lib/markdown';
 import { editKey, readEdit, writeEdit } from '../lib/commentEdits';
 import { commentTargetAt, squash, writtenComment } from '../lib/reviewComments';
 import { PostContext, SourceContext, type PostContextValue } from '../lib/reviewContexts';
+import { ToolsContext } from '../lib/toolsContext';
 import { Button } from './ui/Button';
 import { ConfirmPost } from './ConfirmPost';
 import { PostedBadge } from './PostedBadge';
@@ -51,6 +52,7 @@ export function Quote({ children, offset }: { children?: ReactNode; offset?: num
   const [editing, setEditing] = useState(false);
   const post = useContext(PostContext);
   const source = useContext(SourceContext);
+  const tools = useContext(ToolsContext);
   // The comment as the skill wrote it (fences and backticks intact, which GitLab renders), not
   // the rendered text: the code cards add their own labels to what the page shows.
   const written = useMemo(() => writtenComment(source, offset), [source, offset]);
@@ -105,6 +107,16 @@ export function Quote({ children, offset }: { children?: ReactNode; offset?: num
             {editing ? <Check className="size-3.5" /> : <Pencil className="size-3.5" />}
             {editing ? 'Done' : 'Edit'}
           </Button>
+          {tools.askAbout && (
+            <Button size="sm" onClick={() => tools.askAbout!({ id: commentId, number: null, text: current })}>
+              <MessageSquare className="size-3.5" />Ask the bot
+            </Button>
+          )}
+          {tools.openInIde && target?.line && (
+            <Button size="sm" onClick={() => tools.openInIde!(target.path, target.line!)}>
+              <Code2 className="size-3.5" />Open in IDE
+            </Button>
+          )}
           <CopyButton label="Copy" disabled={post.locked} getText={() => current} />
           {post.allowPosting && post.slug && post.iid && !postedInfo && (
             <Button size="sm" variant="primary" disabled={post.locked} title={post.locked ? 'A review re-run is in progress: this comment is about to be replaced' : undefined} onClick={() => setConfirming(true)}>

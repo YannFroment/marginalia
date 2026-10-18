@@ -142,7 +142,7 @@ export function App() {
 
   // Home is the list, so the sidebar only exists while reading a
   // review. The stored preference is kept and comes back on the next review.
-  const sidebarAvailable = slug !== null;
+  const sidebarAvailable = slug !== null && slug !== TICKETS_ROUTE;
   const sidebarOpen = sidebarPref && sidebarAvailable;
 
   const items = useMemo(() => data?.items ?? [], [data]);
@@ -220,7 +220,7 @@ export function App() {
         {stack && current && <StackBoard stack={stack} items={items} current={current} isPosted={isPosted} onSelect={go} />}
         {!data ? <ReviewSkeleton /> : !current ? <ReviewMissing /> : (
         <Suspense fallback={<ReviewSkeleton />}>
-        <ReviewReader item={current} review={review} reviewError={reviewError} onRetry={retryReview} projectUrl={data?.projectUrl ?? null} allowPosting={data?.allowPosting ?? false} allowPush={data?.allowPush ?? false} diffInIdeEnabled={data?.diffInIdeEnabled ?? false} deepenEnabled={data?.deepenEnabled ?? false} qaEnabled={data?.qaEnabled ?? false} botState={current ? botBySlug.get(current.slug) : undefined} live={current && data?.status?.current && String(data.status.current.iid) === String(current.iid) ? data.status.current : null} posted={data?.posted ?? EMPTY_POSTED} reload={reload} />
+        <ReviewReader item={current} review={review} reviewError={reviewError} onRetry={retryReview} projectUrl={data?.projectUrl ?? null} allowPosting={data?.allowPosting ?? false} allowPush={data?.allowPush ?? false} diffInIdeEnabled={data?.diffInIdeEnabled ?? false} ideEnabled={data?.ideEnabled ?? false} deepenEnabled={data?.deepenEnabled ?? false} qaEnabled={data?.qaEnabled ?? false} botState={current ? botBySlug.get(current.slug) : undefined} live={current && data?.status?.current && String(data.status.current.iid) === String(current.iid) ? data.status.current : null} posted={data?.posted ?? EMPTY_POSTED} reload={reload} />
         </Suspense>
         )}
         </>

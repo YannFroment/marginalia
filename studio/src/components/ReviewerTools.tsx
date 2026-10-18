@@ -3,7 +3,6 @@ import { Clock, FlaskConical, GitCompare, Loader2, Microscope, SquareTerminal } 
 import { toast } from 'sonner';
 import { requestAction, showDiffInIde, type ActionKind, type ReviewItem } from '../lib/api';
 import type { BotState } from './TabIcon';
-import { ReviewChat } from './ReviewChat';
 
 type ActionState = 'idle' | 'queued' | 'running';
 
@@ -42,7 +41,7 @@ function ActionButton({ slug, action, state }: { slug: string; action: ActionKin
 }
 
 // Our tools on one review: on-demand runs, the MR's worktree in the IDE, the bot's
-// session in a terminal, and the chat that resumes it.
+// session in a terminal. The chat that resumes it sits at the bottom of the review.
 export function ReviewerTools({ item, diffInIdeEnabled, deepenEnabled, qaEnabled, botState }: { item: ReviewItem; diffInIdeEnabled: boolean; deepenEnabled: boolean; qaEnabled: boolean; botState: BotState | undefined }) {
   const [openingDiff, setOpeningDiff] = useState(false);
   const openDiff = async () => {
@@ -84,7 +83,6 @@ export function ReviewerTools({ item, diffInIdeEnabled, deepenEnabled, qaEnabled
         {item.lastDeepAt && <span className="text-xs text-fg-muted">Deep review on {formatRunAt(item.lastDeepAt)}</span>}
         {item.lastQaAt && <span className="text-xs text-fg-muted">QA run on {formatRunAt(item.lastQaAt)}</span>}
       </div>
-      {item.resumeCommand && <ReviewChat slug={item.slug} />}
     </div>
   );
 }
