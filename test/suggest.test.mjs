@@ -104,6 +104,8 @@ test('the check run gets the draft and its files, and its verdict is read strict
 
 test('the example template is used when SUGGEST_TEMPLATE_FILE is empty', async () => {
   process.env.MR_REVIEW_BOT_SKIP_CONFIG_CHECK = '1';
+  // Set before the import: dotenv never overrides it with a local .env value.
+  process.env.SUGGEST_TEMPLATE_FILE = '';
   const { suggestTemplateFile } = await import('../lib/suggest-config.mjs');
   assert.match(suggestTemplateFile, /examples\/ticket-template\.md$/);
   const { readFile } = await import('node:fs/promises');
