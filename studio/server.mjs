@@ -28,6 +28,7 @@ import { byPriorityThenDate } from '../lib/jira.mjs';
 import { TICKETS_FILE } from '../lib/tickets-config.mjs';
 import { ticketsEnabled } from '../lib/tickets.mjs';
 import { autoDoneEnabled, readDoneLog } from '../lib/jira-done.mjs';
+import { listSuggestions, handleSuggestions } from './suggestions-api.mjs';
 import { envDefaults, loadSettings, saveSettings } from '../lib/settings.mjs';
 import { loadState, saveState } from '../lib/state.mjs';
 import { parseAcrossLayers } from '../lib/stack.mjs';
@@ -194,7 +195,7 @@ async function listTickets() {
   } catch {
     /* not fetched yet */
   }
-  return { enabled: ticketsEnabled, autoDone: autoDoneEnabled, data, done: await readDoneLog() };
+  return { enabled: ticketsEnabled, autoDone: autoDoneEnabled, data, done: await readDoneLog(), suggestions: await listSuggestions() };
 }
 
 const clients = new Set();
@@ -540,6 +541,8 @@ async function handle(req, res) {
   if (req.method === 'POST' && pathname === '/api/rerun') return rerunReview(req, res);
   if (req.method === 'POST' && pathname === '/api/push') return pushTriageFixes(req, res);
   if ((req.method === 'PUT' || req.method === 'DELETE') && pathname.startsWith('/api/drafts/')) return mutateDraft(req, res, pathname);
+  const suggestion = handleSuggestions(req, res, pathname, { json, readJsonBody });
+  if (suggestion !== undefined) return suggestion;
   if (req.method !== 'GET') return json(res, 405, { error: 'read-only' });
 
   if (pathname === '/api/reviews') return json(res, 200, await listReviews());
@@ -667,7 +670,7 @@ export function startStudio() {
   // Watch the directory, not the files: status.json and settings.json are
   // written via tmp + rename, which leaves a file-level watcher on the old inode.
   try {
-    watchers.push(watch(dirname(STATUS_FILE), (_e, name) => (name === 'settings.json' || name === 'status.json' || name === 'tickets.json' || name === 'jira-done.jsonl') && broadcast()));
+    watchers.push(watch(dirname(STATUS_FILE), (_e, name) => (name === 'settings.json' || name === 'status.json' || name === 'tickets.json' || name === 'jira-done.jsonl' || name === 'suggestions.json') && broadcast()));
   } catch {
     /* same */
   }

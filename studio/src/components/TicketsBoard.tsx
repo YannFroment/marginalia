@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { CheckCircle2, ExternalLink, GitMerge, GitPullRequest, Inbox } from 'lucide-react';
 import type { Ticket, TicketMr, TicketsPayload } from '../lib/api';
 import { cn } from '../lib/utils';
+import { SuggestedTickets } from './SuggestedTickets';
 
 const SEEN_KEY = 'marginalia:tickets-seen';
 
@@ -120,6 +121,8 @@ export function TicketsBoard({ payload }: { payload: TicketsPayload | null }) {
       <Section title="Yours" tickets={mine} isUnread={isUnread} />
       <Section title="You could take" tickets={takeable} isUnread={isUnread} />
       <Section title="In progress elsewhere" tickets={elsewhere} isUnread={isUnread} />
+
+      {payload.suggestions && <SuggestedTickets payload={payload.suggestions} />}
 
       {payload.done.length > 0 && (
         <section className="mt-8" aria-label="Moved to done">

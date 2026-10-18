@@ -443,12 +443,50 @@ export interface DoneEntry {
   proofs: { project: string; iid: number; sha: string; tag: string }[];
 }
 
+export interface Suggestion {
+  id: string;
+  at: string;
+  area: string;
+  sha: string;
+  title: string;
+  principle: string;
+  files: string[];
+  why: string;
+  body: string;
+  status: 'new' | 'posted';
+  key?: string;
+  url?: string;
+}
+
+export type SuggestionsPayload =
+  | { enabled: false }
+  | {
+    enabled: true;
+    canPost: boolean;
+    project: string;
+    running: boolean;
+    lastRun: { at: string; area: string; sha?: string; costUsd?: number; found?: number; error?: string } | null;
+    items: Suggestion[];
+  };
+
 export interface TicketsPayload {
   enabled: boolean;
   autoDone: boolean;
   data: { fetchedAt: string; projects: string[]; tickets: Ticket[] } | null;
   done: DoneEntry[];
+  suggestions: SuggestionsPayload;
 }
+
+async function postJson(path: string, body: unknown) {
+  const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(out.error ?? `HTTP ${res.status}`);
+  return out;
+}
+
+export const runSuggestions = () => postJson('/api/suggestions/run', {});
+export const dismissSuggestion = (id: string) => postJson('/api/suggestions/dismiss', { id });
+export const postSuggestion = (id: string, title: string, body: string): Promise<{ key: string; url: string }> => postJson('/api/suggestions/post', { id, title, body });
 
 export function useTickets(active: boolean) {
   const [data, setData] = useState<TicketsPayload | null>(null);
