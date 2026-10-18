@@ -101,3 +101,11 @@ test('the check run gets the draft and its files, and its verdict is read strict
   assert.equal(parseVerdict('{"ok": true, "problems": ["line 3 is 30px"]}').ok, false);
   assert.deepEqual(parseVerdict('sorry'), { ok: false, problems: ['the verification answer could not be read'] });
 });
+
+test('the example template is used when SUGGEST_TEMPLATE_FILE is empty', async () => {
+  process.env.MR_REVIEW_BOT_SKIP_CONFIG_CHECK = '1';
+  const { suggestTemplateFile } = await import('../lib/suggest-config.mjs');
+  assert.match(suggestTemplateFile, /examples\/ticket-template\.md$/);
+  const { readFile } = await import('node:fs/promises');
+  assert.match(await readFile(suggestTemplateFile, 'utf8'), /## Acceptance Criteria/);
+});
