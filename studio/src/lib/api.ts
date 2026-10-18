@@ -552,6 +552,7 @@ export interface Suggestion {
   why: string;
   body: string;
   status: 'new' | 'posted';
+  check?: { ok: boolean; problems: string[] };
   key?: string;
   url?: string;
 }
