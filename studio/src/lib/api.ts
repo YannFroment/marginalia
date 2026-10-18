@@ -529,6 +529,7 @@ export interface Ticket {
   mine: boolean;
   takeable: boolean;
   changes: string[];
+  stale?: boolean;
 }
 
 export interface DoneEntry {

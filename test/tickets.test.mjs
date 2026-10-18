@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 process.env.MR_REVIEW_BOT_SKIP_CONFIG_CHECK = '1';
 process.env.TICKET_MR_PROJECTS = 'group/web=web,group/api=api';
-const { isTakeable, rankOf, changesSince } = await import('../lib/tickets-rank.mjs');
+const { isTakeable, rankOf, changesSince, isStale } = await import('../lib/tickets-rank.mjs');
 const { obviousClass } = await import('../lib/tickets-classify.mjs');
 
 const ticket = (over = {}) => ({
@@ -55,4 +55,11 @@ test('only an MR of the first project that names the ticket in its title or bran
   assert.equal(obviousClass(issue('Keyboard navigation'), [web]).front, true);
   assert.equal(obviousClass(issue('Keyboard navigation'), [{ ...web, direct: false }]), null);
   assert.equal(obviousClass(issue('Keyboard navigation'), [{ project: 'group/api', direct: true }]), null);
+});
+
+test('a ticket untouched for six months, or titled outdated, is stale', () => {
+  const now = Date.parse('2026-10-18T12:00:00Z');
+  assert.equal(isStale({ summary: 'Fix the cart', updated: '2026-09-01T00:00:00Z' }, now), false);
+  assert.equal(isStale({ summary: 'Fix the cart', updated: '2026-03-01T00:00:00Z' }, now), true);
+  assert.equal(isStale({ summary: '⚠️ OUTDATED ! Date picker', updated: '2026-10-01T00:00:00Z' }, now), true);
 });

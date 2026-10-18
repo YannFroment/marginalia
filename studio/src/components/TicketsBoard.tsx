@@ -83,7 +83,8 @@ export function TicketsBoard({ payload }: { payload: TicketsPayload | null }) {
   const scoped = useMemo(() => tickets.filter((t) => board === 'all' || t.project === board), [tickets, board]);
   const mine = scoped.filter((t) => t.mine);
   const pool = scoped.filter((t) => !t.mine && (!frontOnly || t.front?.front));
-  const takeable = pool.filter((t) => t.takeable);
+  const takeable = pool.filter((t) => t.takeable && !t.stale);
+  const stale = pool.filter((t) => t.takeable && t.stale);
   const elsewhere = pool.filter((t) => !t.takeable && t.status.category === 'indeterminate');
 
   const markAllSeen = () => {
@@ -117,10 +118,18 @@ export function TicketsBoard({ payload }: { payload: TicketsPayload | null }) {
         Fetched {new Date(payload.data.fetchedAt).toLocaleString()} · {tickets.length} open tickets · moving your tickets to done once in prod is {payload.autoDone ? 'on' : 'off'}
       </p>
 
-      {mine.length + takeable.length + elsewhere.length === 0 && <div className="mt-16 flex flex-col items-center gap-2 text-fg-muted"><Inbox className="size-8" />No tickets on this board.</div>}
+      {mine.length + takeable.length + elsewhere.length + stale.length === 0 && <div className="mt-16 flex flex-col items-center gap-2 text-fg-muted"><Inbox className="size-8" />No tickets on this board.</div>}
       <Section title="Yours" tickets={mine} isUnread={isUnread} />
       <Section title="You could take" tickets={takeable} isUnread={isUnread} />
       <Section title="In progress elsewhere" tickets={elsewhere} isUnread={isUnread} />
+      {stale.length > 0 && (
+        <details className="mt-8">
+          <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-fg-muted">Untouched for six months or marked outdated · {stale.length}</summary>
+          <ul className="mt-2 divide-y divide-zinc-200 overflow-hidden rounded-xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+            {stale.map((t) => <TicketRow key={t.key} ticket={t} unread={isUnread(t)} />)}
+          </ul>
+        </details>
+      )}
 
       {payload.suggestions && <SuggestedTickets payload={payload.suggestions} />}
 
