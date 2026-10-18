@@ -34,8 +34,8 @@ function TicketPreview({ body }: { body: string }) {
   );
 }
 
-function SuggestionCard({ s, canPost, project }: { s: Suggestion; canPost: boolean; project: string }) {
-  const [open, setOpen] = useState(false);
+// One suggestion open at a time: DESIGN.md keeps a single filled primary button in view.
+function SuggestionCard({ s, canPost, project, open, onToggle }: { s: Suggestion; canPost: boolean; project: string; open: boolean; onToggle: () => void }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(s.title);
   const [body, setBody] = useState(s.body);
@@ -61,7 +61,7 @@ function SuggestionCard({ s, canPost, project }: { s: Suggestion; canPost: boole
 
   return (
     <li className="bg-white dark:bg-zinc-900">
-      <button aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(!open)} className="flex w-full flex-wrap items-start gap-x-3 gap-y-1 px-4 py-3 text-left text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800/60">
+      <button aria-expanded={open} aria-controls={panelId} onClick={onToggle} className="flex w-full flex-wrap items-start gap-x-3 gap-y-1 px-4 py-3 text-left text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800/60">
         <ChevronDown className={cn('mt-0.5 size-4 shrink-0 text-fg-muted transition-transform motion-reduce:transition-none', open ? '' : '-rotate-90')} aria-hidden />
         <span className="min-w-0 flex-1 basis-56">
           <span className="font-medium">{s.title}</span>
@@ -120,6 +120,7 @@ function SuggestionCard({ s, canPost, project }: { s: Suggestion; canPost: boole
 export function SuggestedTickets({ payload }: { payload: SuggestionsPayload }) {
   // The run's last date when you clicked: until a newer run lands, the click counts as running.
   const [clickedAt, setClickedAt] = useState<string | null | undefined>(undefined);
+  const [openId, setOpenId] = useState<string | null>(null);
   if (!payload.enabled) return null;
   const last = payload.lastRun;
   const running = payload.running || (clickedAt !== undefined && clickedAt === (last?.at ?? null));
@@ -147,7 +148,7 @@ export function SuggestedTickets({ payload }: { payload: SuggestionsPayload }) {
       </p>
       {payload.items.length > 0 && (
         <ul className="mt-2 divide-y divide-zinc-200 overflow-hidden rounded-xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-          {payload.items.map((s) => <SuggestionCard key={s.id} s={s} canPost={payload.canPost} project={payload.project} />)}
+          {payload.items.map((s) => <SuggestionCard key={s.id} s={s} canPost={payload.canPost} project={payload.project} open={openId === s.id} onToggle={() => setOpenId(openId === s.id ? null : s.id)} />)}
         </ul>
       )}
     </section>
