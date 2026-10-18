@@ -44,6 +44,25 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ReviewsPayload' }
+  /api/tickets:
+    get:
+      tags: [Tickets]
+      operationId: listTickets
+      summary: List the open Jira tickets of the Tickets tab
+      description: What the poller last wrote to tickets.json (null before its first fetch), whether the tab and the move to done are on, and the latest moves to done (or why one could not be made).
+      responses:
+        '200':
+          description: The tickets.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [enabled, autoDone, data, done]
+                properties:
+                  enabled: { type: boolean }
+                  autoDone: { type: boolean }
+                  data: { type: object, nullable: true }
+                  done: { type: array, items: { type: object } }
   /api/reviews/{slug}:
     get:
       tags: [Reviews]

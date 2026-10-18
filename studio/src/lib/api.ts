@@ -163,6 +163,7 @@ interface ReviewsPayload {
   settingsDefaults: Settings;
   allowPosting: boolean;
   allowPush: boolean;
+  ticketsEnabled?: boolean;
   posted: Record<string, PostedInfo>;
 }
 
@@ -400,4 +401,71 @@ export async function fetchThreads(slug: string): Promise<Thread[]> {
   const j = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
   return j.threads;
+}
+
+export interface TicketMr {
+  project: string;
+  iid: number;
+  title: string;
+  state: 'opened' | 'merged' | 'closed' | 'locked';
+  author: string | null;
+  webUrl: string;
+  mergedAt: string | null;
+  direct: boolean;
+}
+
+export interface Ticket {
+  key: string;
+  url: string;
+  project: string;
+  type: string | null;
+  summary: string;
+  excerpt: string;
+  status: { name: string; category: 'new' | 'indeterminate' | 'done' | null };
+  priority: { id: string; name: string } | null;
+  assignee: { name: string; me: boolean } | null;
+  labels: string[];
+  updated: string;
+  mrs: TicketMr[];
+  front: { front: boolean; reason: string; by: string } | null;
+  mine: boolean;
+  takeable: boolean;
+  changes: string[];
+}
+
+export interface DoneEntry {
+  at: string;
+  key: string;
+  from: string;
+  to: string;
+  done: boolean;
+  reason?: string;
+  proofs: { project: string; iid: number; sha: string; tag: string }[];
+}
+
+export interface TicketsPayload {
+  enabled: boolean;
+  autoDone: boolean;
+  data: { fetchedAt: string; projects: string[]; tickets: Ticket[] } | null;
+  done: DoneEntry[];
+}
+
+export function useTickets(active: boolean) {
+  const [data, setData] = useState<TicketsPayload | null>(null);
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/tickets');
+      if (res.ok) setData(await res.json());
+    } catch {
+      /* the reviews hook already reports an unreachable API */
+    }
+  }, []);
+  useEffect(() => {
+    if (!active) return undefined;
+    load();
+    const es = new EventSource('/events');
+    es.onmessage = () => load();
+    return () => es.close();
+  }, [active, load]);
+  return data;
 }

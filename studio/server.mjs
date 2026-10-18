@@ -25,6 +25,9 @@ import { listMergeRequestDiffs, findPublishedNoteId, mergeRequestNoteExists, app
 import { parseReviewAction, reviewerStateFor } from '../lib/review-actions.mjs';
 import { createDraftNote, createInlineDraftNote, listDraftNotes, updateDraftNote, deleteDraftNote, publishDraftNotes, draftNoteExists } from '../lib/gitlab-drafts.mjs';
 import { byPriorityThenDate } from '../lib/jira.mjs';
+import { TICKETS_FILE } from '../lib/tickets-config.mjs';
+import { ticketsEnabled } from '../lib/tickets.mjs';
+import { autoDoneEnabled, readDoneLog } from '../lib/jira-done.mjs';
 import { envDefaults, loadSettings, saveSettings } from '../lib/settings.mjs';
 import { loadState, saveState } from '../lib/state.mjs';
 import { parseAcrossLayers } from '../lib/stack.mjs';
@@ -179,7 +182,19 @@ async function listReviews() {
   items.sort(byPriorityThenDate);
   // https://host/group/project, from any tracked MR url; used to link !123 and file paths.
   const projectUrl = (status?.mrs ?? []).map((mr) => mr.web_url?.match(/^(.*)\/-\/merge_requests\/\d+/)?.[1]).find(Boolean) ?? null;
-  return { status, items, stacks: buildStacks(status), projectUrl, jiraBaseUrl: JIRA_BASE_URL ? JIRA_BASE_URL.replace(/\/+$/, '') : null, settings: loadSettings(), settingsDefaults: envDefaults(), allowPosting: ALLOW_POSTING === 'true', allowPush: ALLOW_PUSH === 'true', posted: await loadPosted() };
+  return { status, items, stacks: buildStacks(status), projectUrl, jiraBaseUrl: JIRA_BASE_URL ? JIRA_BASE_URL.replace(/\/+$/, '') : null, settings: loadSettings(), settingsDefaults: envDefaults(), allowPosting: ALLOW_POSTING === 'true', allowPush: ALLOW_PUSH === 'true', ticketsEnabled, posted: await loadPosted() };
+}
+
+// Tickets tab: what the poller last wrote to tickets.json, and the moves to
+// the final status it made (or could not make).
+async function listTickets() {
+  let data = null;
+  try {
+    data = JSON.parse(await readFile(TICKETS_FILE, 'utf8'));
+  } catch {
+    /* not fetched yet */
+  }
+  return { enabled: ticketsEnabled, autoDone: autoDoneEnabled, data, done: await readDoneLog() };
 }
 
 const clients = new Set();
@@ -528,6 +543,7 @@ async function handle(req, res) {
   if (req.method !== 'GET') return json(res, 405, { error: 'read-only' });
 
   if (pathname === '/api/reviews') return json(res, 200, await listReviews());
+  if (pathname === '/api/tickets') return json(res, 200, await listTickets());
 
   // Previous versions of a review (/api/history/:slug) and one of them (/api/history/:slug/:id).
   if (pathname.startsWith('/api/history/')) {
@@ -651,7 +667,7 @@ export function startStudio() {
   // Watch the directory, not the files: status.json and settings.json are
   // written via tmp + rename, which leaves a file-level watcher on the old inode.
   try {
-    watchers.push(watch(dirname(STATUS_FILE), (_e, name) => (name === 'settings.json' || name === 'status.json') && broadcast()));
+    watchers.push(watch(dirname(STATUS_FILE), (_e, name) => (name === 'settings.json' || name === 'status.json' || name === 'tickets.json' || name === 'jira-done.jsonl') && broadcast()));
   } catch {
     /* same */
   }

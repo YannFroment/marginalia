@@ -2,9 +2,10 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } fro
 import { LazyMotion, MotionConfig } from 'motion/react';
 import { Inbox } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
-import { loadSeen, saveSeen, useReview, useReviews, type ReviewItem } from './lib/api';
+import { loadSeen, saveSeen, useReview, useReviews, useTickets, type ReviewItem } from './lib/api';
 import { groupReviews, waitingOnYou } from './lib/dashboard';
 import { usePersistentState, useOpenTabs } from './lib/layout';
+import { cn } from './lib/utils';
 import { StatusBar } from './components/StatusBar';
 import { TabStrip, type BotState } from './components/TabStrip';
 import { Sidebar } from './components/Sidebar';
@@ -16,14 +17,25 @@ import { CommandPalette } from './components/CommandPalette';
 import { SettingsPage } from './components/SettingsPage';
 import { StackBoard } from './components/StackBoard';
 import { ReviewMissing, ReviewSkeleton } from './components/ReviewSkeleton';
+import { TicketsBoard } from './components/TicketsBoard';
 
 const EMPTY_POSTED = {};
 // `#/settings` is the settings page, not a review.
 const SETTINGS_ROUTE = 'settings';
+// `#/tickets` is the Jira tickets page.
+const TICKETS_ROUTE = 'tickets';
 // Reviews older than this are hidden from Home.
 const STALE_DAYS = 30;
 // The animation features load after the first paint; until then `m` components just render.
 const loadMotionFeatures = () => import('./lib/motionFeatures').then((mod) => mod.default);
+
+// Reviews and, when the Tickets tab is configured, Jira tickets.
+function HomeNav({ active }: { active: 'reviews' | 'tickets' }) {
+  const link = (id: 'reviews' | 'tickets', href: string, label: string) => (
+    <a href={href} aria-current={active === id ? 'page' : undefined} className={cn('touch-target rounded-lg px-3 py-1.5 text-sm', active === id ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900' : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800')}>{label}</a>
+  );
+  return <nav aria-label="Pages" className="flex gap-2">{link('reviews', '#', 'Reviews')}{link('tickets', `#/${TICKETS_ROUTE}`, 'Tickets')}</nav>;
+}
 
 function useHashSlug() {
   // A malformed escape (`#/%E0%A4`) makes decodeURIComponent throw: treat it as no review.
@@ -130,7 +142,7 @@ export function App() {
 
   // Home is the list, so the sidebar only exists while reading a
   // review. The stored preference is kept and comes back on the next review.
-  const sidebarAvailable = slug !== null;
+  const sidebarAvailable = slug !== null && slug !== TICKETS_ROUTE;
   const sidebarOpen = sidebarPref && sidebarAvailable;
 
   const items = useMemo(() => data?.items ?? [], [data]);
@@ -149,7 +161,8 @@ export function App() {
   const isPosted = (i: ReviewItem) => Object.keys(data?.posted ?? {}).some((k) => k.startsWith(`${i.slug}:`));
   const current = items.find((i) => i.slug === slug);
   const stack = current?.stackId ? data?.stacks.find((s) => s.id === current.stackId) : undefined;
-  const { content: review, error: reviewError, retry: retryReview } = useReview(slug === SETTINGS_ROUTE ? null : slug, current?.reviewedAt);
+  const { content: review, error: reviewError, retry: retryReview } = useReview(slug === SETTINGS_ROUTE || slug === TICKETS_ROUTE ? null : slug, current?.reviewedAt);
+  const tickets = useTickets(slug === TICKETS_ROUTE);
 
   const { isUnread } = useSeen(current);
   const groups = useHomeGroups(items);
@@ -195,6 +208,13 @@ export function App() {
         <main className="min-w-0 flex-1">
       {slug === SETTINGS_ROUTE ? (
         <SettingsPage settings={data?.settings ?? null} defaults={data?.settingsDefaults ?? null} />
+      ) : slug === TICKETS_ROUTE ? (
+        <div className="mx-auto max-w-7xl px-6 py-8">
+          <HomeNav active="tickets" />
+          <h1 className="mt-4 text-3xl font-semibold tracking-tight">Tickets</h1>
+          <p className="mt-1 text-fg-muted">Open Jira tickets</p>
+          <TicketsBoard payload={tickets} />
+        </div>
       ) : slug ? (
         <>
         {stack && current && <StackBoard stack={stack} items={items} current={current} isPosted={isPosted} onSelect={go} />}
@@ -206,7 +226,8 @@ export function App() {
         </>
       ) : (
         <div className="mx-auto max-w-7xl px-6 py-8">
-          <h1 className="text-3xl font-semibold tracking-tight">Review queue</h1>
+          {data?.ticketsEnabled && <HomeNav active="reviews" />}
+          <h1 className={cn('text-3xl font-semibold tracking-tight', data?.ticketsEnabled && 'mt-4')}>Review queue</h1>
           <p className="mt-1 text-fg-muted">
             {data && (waiting > 0 ? `${waiting} waiting on you.` : 'Nothing is waiting on you.')}
             {data && !data.allowPosting && ' Read-only: nothing is posted to GitLab.'}
