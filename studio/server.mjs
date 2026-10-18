@@ -20,6 +20,9 @@ import { filesForPatterns, toDiffFile } from '../lib/mr-diff.mjs';
 import { reviewDiff } from '../lib/review-diff.mjs';
 import { reviewThreads } from '../lib/review-threads.mjs';
 import { listMergeRequestDiffs, findPublishedNoteId, mergeRequestNoteExists, approveMergeRequest, gitlabRequest } from '../lib/gitlab.mjs';
+import { TICKETS_FILE } from '../lib/tickets-config.mjs';
+import { ticketsEnabled } from '../lib/tickets.mjs';
+import { autoDoneEnabled, readDoneLog } from '../lib/jira-done.mjs';
 import { lastRunsByMr } from '../lib/runlog.mjs';
 import { CLAUDE_ALLOWED_TOOLS } from '../lib/allowed-tools.mjs';
 import { execFileAsync } from '../lib/exec.mjs';
@@ -149,7 +152,8 @@ async function listReviews() {
   const byPath = new Map((status?.mrs ?? []).map((mr) => [mr.reviewPath, mr]));
   const lastRuns = await lastRunsByMr();
   const sessions = await lastSessionByMr();
-  const worktrees = perMrWorktrees ? await listWorktrees() : [];
+  // The resume command is a convenience: a folder git can't list must not take the whole list down.
+  const worktrees = perMrWorktrees ? await listWorktrees().catch(() => []) : [];
   const workdirOf = (mr) => (perMrWorktrees ? existingWorktree(mr, worktrees)?.path : BOT_WORKTREE_DIR);
   let names = [];
   try {
@@ -191,7 +195,19 @@ async function listReviews() {
   items.sort(byPriorityThenDate);
   // https://host/group/project, from any tracked MR url; used to link !123 and file paths.
   const projectUrl = (status?.mrs ?? []).map((mr) => mr.web_url?.match(/^(.*)\/-\/merge_requests\/\d+/)?.[1]).find(Boolean) ?? null;
-  return { status, items, stacks: buildStacks(status), projectUrl, jiraBaseUrl: JIRA_BASE_URL ? JIRA_BASE_URL.replace(/\/+$/, '') : null, settings: loadSettings(), settingsDefaults: envDefaults(), allowPosting: ALLOW_POSTING === 'true', allowPush: ALLOW_PUSH === 'true', ideEnabled: Boolean(IDE_COMMAND.trim()), diffInIdeEnabled: perMrWorktrees && Boolean(IDE_FOLDER_COMMAND.trim()), deepenEnabled: actionEnabled('deepen'), qaEnabled: actionEnabled('qa'), posted: await loadPosted() };
+  return { status, items, stacks: buildStacks(status), projectUrl, jiraBaseUrl: JIRA_BASE_URL ? JIRA_BASE_URL.replace(/\/+$/, '') : null, settings: loadSettings(), settingsDefaults: envDefaults(), allowPosting: ALLOW_POSTING === 'true', allowPush: ALLOW_PUSH === 'true', ideEnabled: Boolean(IDE_COMMAND.trim()), diffInIdeEnabled: perMrWorktrees && Boolean(IDE_FOLDER_COMMAND.trim()), deepenEnabled: actionEnabled('deepen'), qaEnabled: actionEnabled('qa'), ticketsEnabled, posted: await loadPosted() };
+}
+
+// Tickets tab: what the poller last wrote to tickets.json, and the moves to
+// the final status it made (or could not make).
+async function listTickets() {
+  let data = null;
+  try {
+    data = JSON.parse(await readFile(TICKETS_FILE, 'utf8'));
+  } catch {
+    /* not fetched yet */
+  }
+  return { enabled: ticketsEnabled, autoDone: autoDoneEnabled, data, done: await readDoneLog() };
 }
 
 const clients = new Set();
@@ -655,6 +671,7 @@ async function handle(req, res) {
   if (pathname === '/api/chat/stream') return chatStream(req, res, new URL(req.url, 'http://localhost').searchParams.get('slug'));
 
   if (pathname === '/api/reviews') return json(res, 200, await listReviews());
+  if (pathname === '/api/tickets') return json(res, 200, await listTickets());
 
   // Previous versions of a review (/api/history/:slug) and one of them (/api/history/:slug/:id).
   if (pathname.startsWith('/api/history/')) {
@@ -778,7 +795,7 @@ export function startStudio() {
   // Watch the directory, not the files: status.json and settings.json are
   // written via tmp + rename, which leaves a file-level watcher on the old inode.
   try {
-    watchers.push(watch(dirname(STATUS_FILE), (_e, name) => (name === 'settings.json' || name === 'status.json') && broadcast()));
+    watchers.push(watch(dirname(STATUS_FILE), (_e, name) => (name === 'settings.json' || name === 'status.json' || name === 'tickets.json' || name === 'jira-done.jsonl') && broadcast()));
   } catch {
     /* same */
   }

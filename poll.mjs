@@ -1,7 +1,7 @@
 import './lib/node-check.mjs';
 import { mkdir } from 'node:fs/promises';
 import { watch } from 'node:fs';
-import { GITLAB_USERNAME, TRIAGE_COMMAND, REVIEWS_DIR, ROOT, encodedProjectId } from './lib/config.mjs';
+import { JIRA_POLL_MINUTES, GITLAB_USERNAME, TRIAGE_COMMAND, REVIEWS_DIR, ROOT, encodedProjectId } from './lib/config.mjs';
 import { allowedTargets, loadSettings, pollIntervalMs } from './lib/settings.mjs';
 import { startStudio, setActionHandler } from './studio/server.mjs';
 import { isFancyTerminal, c, timestamp, log, mrTag } from './lib/log.mjs';
@@ -11,6 +11,8 @@ import { notify } from './lib/notify.mjs';
 import { listOpenMergeRequests, reviewFileCoversLastPush, latestPeerCommentAt, gitlabRequest } from './lib/gitlab.mjs';
 import { fetchReviewStates } from './lib/mr-state.mjs';
 import { jiraPriorityOf } from './lib/jira.mjs';
+import { ticketsEnabled, refreshTickets } from './lib/tickets.mjs';
+import { autoDone } from './lib/jira-done.mjs';
 import { reviewOutputPath, mrCommentsOutputPath, mtimeOrNull } from './lib/paths.mjs';
 import { ensureBotWorktree } from './lib/worktree.mjs';
 import { runReview, runMrComments } from './lib/claude-runner.mjs';
@@ -373,6 +375,23 @@ function watchSettings() {
   }
 }
 
+// The Tickets tab has its own clock: Jira moves slower than MRs, and a
+// refresh must never wait for a review that holds the worktree.
+async function runTickets() {
+  try {
+    const data = await refreshTickets();
+    const moved = await autoDone(data);
+    if (moved.length) {
+      console.log(`${timestamp()} ${c.green}Moved to their final status: ${moved.join(', ')}.${c.reset}`);
+      notify('Jira', `Moved to done: ${moved.join(', ')}`);
+    }
+  } catch (err) {
+    console.error(`${timestamp()} Tickets refresh failed:`, err.message);
+  } finally {
+    setTimeout(runTickets, Number(JIRA_POLL_MINUTES) * 60_000);
+  }
+}
+
 async function shutdown() {
   clearTimeout(pollTimer);
   status.phase = 'stopped';
@@ -394,6 +413,7 @@ async function main() {
   if (!perMrWorktrees) await ensureBotWorktree();
   // `kill -USR1 <pid>` (the menu bar's "Poll now") triggers a poll right away.
   process.on('SIGUSR1', runPoll);
+  if (ticketsEnabled) runTickets();
   await runPoll();
 }
 
