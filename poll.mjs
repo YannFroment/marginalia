@@ -1,7 +1,8 @@
 import './lib/node-check.mjs';
 import { mkdir } from 'node:fs/promises';
 import { watch } from 'node:fs';
-import { JIRA_POLL_MINUTES, GITLAB_USERNAME, TRIAGE_COMMAND, REVIEWS_DIR, ROOT, encodedProjectId } from './lib/config.mjs';
+import { GITLAB_USERNAME, TRIAGE_COMMAND, REVIEWS_DIR, ROOT, encodedProjectId } from './lib/config.mjs';
+import { JIRA_POLL_MINUTES } from './lib/tickets-config.mjs';
 import { allowedTargets, loadSettings, pollIntervalMs } from './lib/settings.mjs';
 import { startStudio, setActionHandler } from './studio/server.mjs';
 import { isFancyTerminal, c, timestamp, log, mrTag } from './lib/log.mjs';
