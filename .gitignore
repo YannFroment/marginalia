@@ -17,3 +17,7 @@ mr-review-bot.10s.sh
 .DS_Store
 worktree/
 .env.bak
+tickets.json
+tickets.json.tmp
+ticket-classes.json
+jira-done.jsonl

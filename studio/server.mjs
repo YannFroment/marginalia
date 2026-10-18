@@ -8,11 +8,13 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { watch } from 'node:fs';
 import { join, dirname, extname, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING, POST_DRY_RUN, DEEPEN_COMMAND, QA_COMMAND, BOT_WORKTREE_DIR, CLAUDE_BIN, CLAUDE_ALLOWED_TOOLS, IDE_COMMAND, IDE_FOLDER_COMMAND, encodedProjectId, JIRA_BASE_URL } from '../lib/config.mjs';
+import { TICKETS_FILE, REVIEWS_DIR, STATUS_FILE, STUDIO_PORT, ALLOW_POSTING, POST_DRY_RUN, DEEPEN_COMMAND, QA_COMMAND, BOT_WORKTREE_DIR, CLAUDE_BIN, CLAUDE_ALLOWED_TOOLS, IDE_COMMAND, IDE_FOLDER_COMMAND, encodedProjectId, JIRA_BASE_URL } from '../lib/config.mjs';
 import { TRIAGE_FILE_PREFIX, fileExists } from '../lib/paths.mjs';
 import { loadPosted, savePosted } from '../lib/posted.mjs';
 import { postMergeRequestNote, postMergeRequestInlineNote, mergeRequestNoteExists, gitlabRequest } from '../lib/gitlab.mjs';
 import { byPriorityThenDate } from '../lib/jira.mjs';
+import { ticketsEnabled } from '../lib/tickets.mjs';
+import { autoDoneEnabled, readDoneLog } from '../lib/jira-done.mjs';
 import { lastRunsByMr } from '../lib/runlog.mjs';
 import { execFileAsync } from '../lib/exec.mjs';
 import { loadSettings, saveSettings } from '../lib/settings.mjs';
@@ -200,6 +202,18 @@ async function listReviews() {
   // https://host/group/project, from any tracked MR url; used to link !123 and file paths.
   const projectUrl = (status?.mrs ?? []).map((mr) => mr.web_url?.match(/^(.*)\/-\/merge_requests\/\d+/)?.[1]).find(Boolean) ?? null;
   return { status, items, stacks: buildStacks(status), projectUrl, settings: loadSettings(), allowPosting: ALLOW_POSTING === 'true', jiraUrl: JIRA_BASE_URL.replace(/\/+$/, '') || null, ideEnabled: Boolean(IDE_COMMAND.trim()), diffInIdeEnabled: perMrWorktrees && Boolean(IDE_FOLDER_COMMAND.trim()), postDryRun: POST_DRY_RUN === 'true', deepenEnabled: actionEnabled('deepen'), qaEnabled: actionEnabled('qa'), posted: await loadPosted() };
+}
+
+// Tickets tab: what the poller last wrote to tickets.json, and the moves to
+// the final status it made (or could not make).
+async function listTickets() {
+  let data = null;
+  try {
+    data = JSON.parse(await readFile(TICKETS_FILE, 'utf8'));
+  } catch {
+    /* not fetched yet */
+  }
+  return { enabled: ticketsEnabled, autoDone: autoDoneEnabled, data, done: await readDoneLog() };
 }
 
 const clients = new Set();
@@ -486,6 +500,7 @@ async function handle(req, res) {
   if (pathname === '/api/chat/stream') return chatStream(req, res, new URL(req.url, 'http://localhost').searchParams.get('slug'));
 
   if (pathname === '/api/reviews') return json(res, 200, await listReviews());
+  if (pathname === '/api/tickets') return json(res, 200, await listTickets());
 
   if (pathname.startsWith('/api/reviews/')) {
     let slug;
@@ -530,7 +545,7 @@ export function startStudio() {
   // Watch the directory, not the files: status.json and settings.json are
   // written via tmp + rename, which leaves a file-level watcher on the old inode.
   try {
-    watch(dirname(STATUS_FILE), (_e, name) => (name === 'settings.json' || name === 'status.json') && broadcast());
+    watch(dirname(STATUS_FILE), (_e, name) => (name === 'settings.json' || name === 'status.json' || name === 'tickets.json' || name === 'jira-done.jsonl') && broadcast());
   } catch {
     /* same */
   }

@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { MotionConfig, motion } from 'motion/react';
 import { Inbox, LayoutGrid, Grid3x3, List, Rows3 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
-import { loadSeen, saveSeen, useMarkdown, useReviews, type ReviewItem } from './lib/api';
+import { loadSeen, saveSeen, useMarkdown, useReviews, useTickets, type ReviewItem } from './lib/api';
 import { usePersistentState, useOpenTabs } from './lib/layout';
 import { cn } from './lib/utils';
 import { StatusBar } from './components/StatusBar';
@@ -16,6 +16,7 @@ const loadReader = () => import('./components/ReviewReader');
 const ReviewReader = lazy(() => loadReader().then((m) => ({ default: m.ReviewReader })));
 import { CommandPalette } from './components/CommandPalette';
 import { StackBoard } from './components/StackBoard';
+import { TicketsBoard } from './components/TicketsBoard';
 
 const EMPTY_POSTED = {};
 // Reviews older than this are hidden from the Home grid and its counters.
@@ -43,7 +44,8 @@ function loadSize(): Layout {
   }
 }
 
-type Tab = 'review' | 'comments';
+type Tab = 'review' | 'comments' | 'tickets';
+const TAB_LABEL: Record<Tab, string> = { review: 'Reviews', comments: 'Triage', tickets: 'Tickets' };
 
 function useHashSlug() {
   const read = () => decodeURIComponent(location.hash.replace(/^#\/?/, '')) || null;
@@ -118,6 +120,7 @@ export function App() {
   const current = items.find((i) => i.slug === slug);
   const stack = current?.stackId ? data?.stacks.find((s) => s.id === current.stackId) : undefined;
   const markdown = useMarkdown(slug, current?.reviewedAt);
+  const tickets = useTickets(tab === 'tickets' && !slug);
 
   useEffect(() => {
     if (!current) return;
@@ -243,12 +246,21 @@ export function App() {
         </>
       ) : (
         <div className="mx-auto max-w-7xl px-6 py-8">
-          <h1 className="text-3xl font-semibold tracking-tight">Review queue</h1>
-          <p className="mt-1 text-fg-muted">Open merge requests, reviewed by the bot.{data && !data.allowPosting && ' Read-only: nothing is posted to GitLab.'}</p>
+          {tab === 'tickets' ? (
+            <>
+              <h1 className="text-3xl font-semibold tracking-tight">Tickets</h1>
+              <p className="mt-1 text-fg-muted">Open Jira tickets</p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-3xl font-semibold tracking-tight">Review queue</h1>
+              <p className="mt-1 text-fg-muted">Open merge requests, reviewed by the bot.{data && !data.allowPosting && ' Read-only: nothing is posted to GitLab.'}</p>
+            </>
+          )}
 
 
           <div className="mt-6 flex flex-wrap items-center gap-2 border-b border-zinc-200 pb-3 dark:border-zinc-800">
-            {(['review', 'comments'] as Tab[]).map((t) => (
+            {(['review', 'comments', 'tickets'] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => {
@@ -257,10 +269,10 @@ export function App() {
                 }}
                 className={cn('touch-target rounded-lg px-3 py-1.5 text-sm', tab === t ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900' : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800')}
               >
-                {t === 'review' ? 'Reviews' : 'Triage'}
+                {TAB_LABEL[t]}
               </button>
             ))}
-            <div role="radiogroup" aria-label="Card size" className="ml-auto flex rounded-lg border border-zinc-200 p-0.5 dark:border-zinc-800">
+            {tab !== 'tickets' && <div role="radiogroup" aria-label="Card size" className="ml-auto flex rounded-lg border border-zinc-200 p-0.5 dark:border-zinc-800">
               {SIZES.map(({ value, label, Icon }) => (
                 <button
                   key={value}
@@ -274,9 +286,10 @@ export function App() {
                   <Icon className="size-4" />
                 </button>
               ))}
-            </div>
+            </div>}
           </div>
 
+          {tab === 'tickets' ? <TicketsBoard payload={tickets} /> : <>
           <StatStrip counts={counts} keys={[...tileKeys]} active={filter} onChange={setFilter} />
 
           {data && visible.length === 0 ? (
@@ -299,6 +312,7 @@ export function App() {
                 ])}
             </div>
           )}
+          </>}
         </div>
       )}
         </main>
