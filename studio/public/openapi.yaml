@@ -73,6 +73,15 @@ paths:
                       project: { type: string, description: The Jira project Post creates the ticket in. }
                       running: { type: boolean }
                       lastRun: { type: object, nullable: true }
+                      counts:
+                        type: object
+                        description: How many suggestions of suggestions.json are in each status, dismissed ones included (they are not in `items`).
+                        required: [new, accepted, dismissed, posted]
+                        properties:
+                          new: { type: integer }
+                          accepted: { type: integer }
+                          dismissed: { type: integer }
+                          posted: { type: integer }
                       items: { type: array, items: { type: object } }
   /api/suggestions/run:
     post:
@@ -88,6 +97,23 @@ paths:
       responses:
         '202':
           description: The run is going.
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+  /api/suggestions/revise:
+    post:
+      tags: [Tickets]
+      operationId: reviseSuggestions
+      summary: Rewrite the contested drafts
+      description: Every new suggestion the verifier contested goes back to its writer with the objections, then is checked again, up to SUGGEST_REWRITE_ROUNDS times; the item keeps its id. Answers at once, the list refreshes when it lands. A click during a run joins it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '202':
+          description: The rewrite is going.
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
@@ -128,12 +154,43 @@ paths:
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
         '502':
           description: Jira refused the request.
+  /api/suggestions/accept:
+    post:
+      tags: [Tickets]
+      operationId: acceptSuggestion
+      summary: Keep a suggestion without posting it
+      description: Marks a new suggestion `accepted` with `acceptedAt`; it stays listed and can still be posted or dismissed. Keeping a kept one changes nothing; a posted or dismissed one is refused (`409`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Kept.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accepted]
+                properties:
+                  accepted: { type: boolean, example: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Already posted or dismissed.
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
   /api/suggestions/dismiss:
     post:
       tags: [Tickets]
       operationId: dismissSuggestion
       summary: Dismiss a suggestion
-      description: Hides a suggestion that was not posted; a posted one stays as it is.
+      description: Hides a suggestion that was not posted, kept or not; a posted one stays as it is.
       requestBody:
         required: true
         content:

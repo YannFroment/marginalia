@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, ChevronDown, ExternalLink, Lightbulb, Loader2, Pencil, Send, ShieldCheck, X } from 'lucide-react';
-import { dismissSuggestion, postSuggestion, runSuggestions, type Suggestion, type SuggestionsPayload } from '../lib/api';
+import { AlertTriangle, Check, ChevronDown, ExternalLink, Lightbulb, Loader2, Pencil, Send, ShieldCheck, X } from 'lucide-react';
+import { acceptSuggestion, dismissSuggestion, postSuggestion, runSuggestions, type Suggestion, type SuggestionsPayload } from '../lib/api';
 import { NoteMarkdown } from './NoteMarkdown';
 import { Button } from './ui/Button';
 import { cn } from '../lib/utils';
@@ -39,21 +39,24 @@ function SuggestionCard({ s, canPost, project, open, onToggle }: { s: Suggestion
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(s.title);
   const [body, setBody] = useState(s.body);
-  const [busy, setBusy] = useState<'post' | 'dismiss' | null>(null);
+  const [busy, setBusy] = useState<'post' | 'keep' | 'dismiss' | null>(null);
   const panelId = useId();
   const posted = s.status === 'posted';
+  const kept = s.status === 'accepted';
 
-  const act = async (kind: 'post' | 'dismiss') => {
+  const act = async (kind: 'post' | 'keep' | 'dismiss') => {
     setBusy(kind);
     try {
       if (kind === 'post') {
         const { key, url } = await postSuggestion(s.id, title, body);
         toast.success(`${key} created`, { action: { label: 'Open', onClick: () => window.open(url, '_blank', 'noreferrer') } });
+      } else if (kind === 'keep') {
+        await acceptSuggestion(s.id);
       } else {
         await dismissSuggestion(s.id);
       }
     } catch (e) {
-      toast.error(kind === 'post' ? 'Could not create the ticket' : 'Could not dismiss', { description: (e as Error).message });
+      toast.error({ post: 'Could not create the ticket', keep: 'Could not keep', dismiss: 'Could not dismiss' }[kind], { description: (e as Error).message });
     } finally {
       setBusy(null);
     }
@@ -71,6 +74,7 @@ function SuggestionCard({ s, canPost, project, open, onToggle }: { s: Suggestion
         {s.check && (s.check.ok
           ? <span title="Every claim was re-read against the code" className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs text-emerald-700 dark:text-emerald-300"><ShieldCheck className="size-3" aria-hidden />Checked</span>
           : <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-800 dark:text-amber-300"><AlertTriangle className="size-3" aria-hidden />{s.check.problems.length} to check</span>)}
+        {kept && <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs text-emerald-700 dark:text-emerald-300">kept</span>}
         {posted && <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-0.5 font-mono text-xs text-emerald-700 dark:text-emerald-300">{s.key}</span>}
       </button>
       {open && (
@@ -106,7 +110,12 @@ function SuggestionCard({ s, canPost, project, open, onToggle }: { s: Suggestion
                   {busy === 'post' ? <Loader2 className="size-4 animate-spin motion-reduce:animate-pulse" aria-hidden /> : <Send className="size-4" aria-hidden />}Post to {project}
                 </Button>
                 <Button onClick={() => setEditing(!editing)} disabled={busy !== null}><Pencil className="size-4" aria-hidden />{editing ? 'Preview' : 'Edit'}</Button>
-                <Button variant="ghost" onClick={() => act('dismiss')} disabled={busy !== null} className="ml-auto"><X className="size-4" aria-hidden />Dismiss</Button>
+                {!kept && (
+                  <Button onClick={() => act('keep')} disabled={busy !== null} className="ml-auto" aria-busy={busy === 'keep'}>
+                    {busy === 'keep' ? <Loader2 className="size-4 animate-spin motion-reduce:animate-pulse" aria-hidden /> : <Check className="size-4" aria-hidden />}Keep
+                  </Button>
+                )}
+                <Button variant="ghost" onClick={() => act('dismiss')} disabled={busy !== null} className={kept ? 'ml-auto' : undefined}><X className="size-4" aria-hidden />Dismiss</Button>
               </>
             )}
           </div>

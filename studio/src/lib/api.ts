@@ -552,7 +552,7 @@ export interface Suggestion {
   files: string[];
   why: string;
   body: string;
-  status: 'new' | 'posted';
+  status: 'new' | 'accepted' | 'posted';
   check?: { ok: boolean; problems: string[] };
   key?: string;
   url?: string;
@@ -585,6 +585,7 @@ async function postJson(path: string, body: unknown) {
 }
 
 export const runSuggestions = () => postJson('/api/suggestions/run', {});
+export const acceptSuggestion = (id: string) => postJson('/api/suggestions/accept', { id });
 export const dismissSuggestion = (id: string) => postJson('/api/suggestions/dismiss', { id });
 export const postSuggestion = (id: string, title: string, body: string): Promise<{ key: string; url: string }> => postJson('/api/suggestions/post', { id, title, body });
 

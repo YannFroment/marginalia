@@ -6,6 +6,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { request } from 'node:http';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -14,6 +15,11 @@ process.env.ALLOW_POSTING = 'false';
 process.env.STUDIO_PORT = '0';
 const repo = await mkdtemp(join(tmpdir(), 'marginalia-api-'));
 process.env.REPO_LOCAL_PATH = repo;
+const keptId = '1be2e1cd-0e57-4869-b477-6090c736da70';
+const goneId = '2d86a7cb-b568-4c0b-b860-beb532ed0828';
+process.env.SUGGEST_JIRA_PROJECT = 'ABC';
+process.env.SUGGESTIONS_FILE = join(repo, 'suggestions.json');
+await writeFile(process.env.SUGGESTIONS_FILE, JSON.stringify({ lastRun: null, items: [{ id: keptId, title: 't', body: 'b', status: 'new', files: [] }, { id: goneId, title: 'g', body: 'b', status: 'dismissed', files: [] }] }));
 
 const { REVIEWS_DIR } = await import('../lib/config.mjs');
 const { FINDINGS_FILE } = await import('../lib/findings.mjs');
@@ -82,4 +88,30 @@ test('a review written before shapes were stored is still listed and readable', 
   const { body } = await get('/api/reviews/legacy');
   assert.equal(body.shape.source, 'markdown');
   assert.equal(body.shape.verdict, 'APPROVE');
+});
+
+// The write guard wants our own Host (STUDIO_PORT is 0 here), which fetch does not let us set.
+function postJson(path, body) {
+  return new Promise((resolve, reject) => {
+    const req = request(`${base}${path}`, { method: 'POST', headers: { host: '127.0.0.1:0', 'content-type': 'application/json' } }, async (res) => {
+      let raw = '';
+      for await (const chunk of res) raw += chunk;
+      resolve({ status: res.statusCode, body: JSON.parse(raw) });
+    });
+    req.on('error', reject);
+    req.end(JSON.stringify(body));
+  });
+}
+
+test('Keep answers accepted, the kept suggestion stays listed, and a bad id is refused', async () => {
+  assert.deepEqual(await postJson('/api/suggestions/accept', { id: keptId }), { status: 200, body: { accepted: true } });
+  const { body } = await get('/api/tickets');
+  assert.equal(body.suggestions.items.find((s) => s.id === keptId).status, 'accepted');
+  assert.equal((await postJson('/api/suggestions/accept', { id: 'nope' })).status, 400);
+});
+
+test('the counts include dismissed suggestions that the list leaves out', async () => {
+  const { body } = await get('/api/tickets');
+  assert.deepEqual(body.suggestions.counts, { new: 0, accepted: 1, dismissed: 1, posted: 0 });
+  assert.ok(!body.suggestions.items.some((s) => s.id === goneId));
 });

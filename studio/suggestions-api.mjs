@@ -1,7 +1,8 @@
-// Routes of the suggested tickets, kept out of server.mjs: list, run, post, dismiss.
+// Routes of the suggested tickets, kept out of server.mjs: list, run, revise, post, accept, dismiss.
 import { suggestEnabled, createEnabled, SUGGEST_JIRA_PROJECT } from '../lib/suggest-config.mjs';
 import { readSuggestions, findSuggestions } from '../lib/suggest.mjs';
-import { postSuggestion, dismissSuggestion, PostError } from '../lib/suggest-post.mjs';
+import { reviseContested, isRevising } from '../lib/suggest-redo.mjs';
+import { postSuggestion, acceptSuggestion, dismissSuggestion, PostError } from '../lib/suggest-post.mjs';
 
 const ID_RE = /^[0-9a-f-]{36}$/;
 const MAX_BODY = 18_000;
@@ -9,7 +10,9 @@ const MAX_BODY = 18_000;
 export async function listSuggestions() {
   if (!suggestEnabled) return { enabled: false };
   const data = await readSuggestions();
-  return { enabled: true, canPost: createEnabled, project: SUGGEST_JIRA_PROJECT, running: data.running, lastRun: data.lastRun, items: data.items.filter((s) => s.status !== 'dismissed') };
+  const counts = { new: 0, accepted: 0, dismissed: 0, posted: 0 };
+  for (const { status } of data.items) if (Object.hasOwn(counts, status)) counts[status] += 1;
+  return { enabled: true, canPost: createEnabled, project: SUGGEST_JIRA_PROJECT, running: data.running || isRevising(), lastRun: data.lastRun, lastRevise: data.lastRevise ?? null, counts, items: data.items.filter((s) => s.status !== 'dismissed') };
 }
 
 // Returns undefined when the request is not one of these routes.
@@ -25,9 +28,18 @@ export function handleSuggestions(req, res, pathname, { json, readJsonBody }) {
       findSuggestions().catch((err) => console.error('Suggestion run failed:', err.message));
       return json(res, 202, { running: true });
     }
+    if (action === 'revise') {
+      // The contested drafts go back to their writer with the objections; same shape as a run.
+      reviseContested().catch((err) => console.error('Suggestion revise failed:', err.message));
+      return json(res, 202, { running: true });
+    }
     const { id, title, body } = input;
     if (typeof id !== 'string' || !ID_RE.test(id)) return json(res, 400, { error: 'bad id' });
     try {
+      if (action === 'accept') {
+        await acceptSuggestion(id);
+        return json(res, 200, { accepted: true });
+      }
       if (action === 'dismiss') {
         await dismissSuggestion(id);
         return json(res, 200, { dismissed: true });
