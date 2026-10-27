@@ -17,9 +17,8 @@ const repo = await mkdtemp(join(tmpdir(), 'marginalia-api-'));
 process.env.REPO_LOCAL_PATH = repo;
 const keptId = '1be2e1cd-0e57-4869-b477-6090c736da70';
 const goneId = '2d86a7cb-b568-4c0b-b860-beb532ed0828';
-process.env.SUGGEST_JIRA_PROJECT = 'ABC';
-process.env.SUGGESTIONS_FILE = join(repo, 'suggestions.json');
-await writeFile(process.env.SUGGESTIONS_FILE, JSON.stringify({ lastRun: null, items: [{ id: keptId, title: 't', body: 'b', status: 'new', files: [] }, { id: goneId, title: 'g', body: 'b', status: 'dismissed', files: [] }] }));
+// No factory answers on this port: the Tickets tab has no suggested tickets.
+process.env.FACTORY_URL = 'http://127.0.0.1:1';
 
 const { REVIEWS_DIR } = await import('../lib/config.mjs');
 const { FINDINGS_FILE } = await import('../lib/findings.mjs');
@@ -103,15 +102,8 @@ function postJson(path, body) {
   });
 }
 
-test('Keep answers accepted, the kept suggestion stays listed, and a bad id is refused', async () => {
-  assert.deepEqual(await postJson('/api/suggestions/accept', { id: keptId }), { status: 200, body: { accepted: true } });
+test('the suggested tickets come from the factory; when it is down, the tab has none', async () => {
   const { body } = await get('/api/tickets');
-  assert.equal(body.suggestions.items.find((s) => s.id === keptId).status, 'accepted');
-  assert.equal((await postJson('/api/suggestions/accept', { id: 'nope' })).status, 400);
-});
-
-test('the counts include dismissed suggestions that the list leaves out', async () => {
-  const { body } = await get('/api/tickets');
-  assert.deepEqual(body.suggestions.counts, { new: 0, accepted: 1, dismissed: 1, posted: 0 });
-  assert.ok(!body.suggestions.items.some((s) => s.id === goneId));
+  assert.deepEqual(body.suggestions, { enabled: false });
+  assert.equal((await postJson('/api/suggestions/accept', { id: keptId })).status, 405);
 });

@@ -553,7 +553,7 @@ export interface Suggestion {
   why: string;
   body: string;
   status: 'new' | 'accepted' | 'posted';
-  check?: { ok: boolean; problems: string[] };
+  check?: { ok: boolean; problems: string[]; rounds?: number };
   key?: string;
   url?: string;
 }
@@ -567,6 +567,8 @@ export type SuggestionsPayload =
     running: boolean;
     lastRun: { at: string; area: string; sha?: string; costUsd?: number; found?: number; error?: string } | null;
     items: Suggestion[];
+    // The factory's Tickets screen, where a suggestion is kept, rewritten or dismissed.
+    studio?: string;
   };
 
 export interface TicketsPayload {
@@ -584,10 +586,6 @@ async function postJson(path: string, body: unknown) {
   return out;
 }
 
-export const runSuggestions = () => postJson('/api/suggestions/run', {});
-export const acceptSuggestion = (id: string) => postJson('/api/suggestions/accept', { id });
-export const dismissSuggestion = (id: string) => postJson('/api/suggestions/dismiss', { id });
-export const postSuggestion = (id: string, title: string, body: string): Promise<{ key: string; url: string }> => postJson('/api/suggestions/post', { id, title, body });
 
 export function useTickets(active: boolean) {
   const [data, setData] = useState<TicketsPayload | null>(null);
